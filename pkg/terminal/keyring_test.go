@@ -94,7 +94,7 @@ func testStore(ring *fakeRing) (*credStore, *fakeGit) {
 
 	git := &fakeGit{}
 	return &credStore{
-		netrc:     Netrc(),
+		netrc:     processNetrc,
 		ring:      ring,
 		git:       git,
 		reachable: func() bool { return true },
@@ -526,4 +526,22 @@ func TestSessionBus(t *testing.T) {
 			}
 		})
 	}
+}
+
+// FURY_NETRC_WRITE and NETRC are read from the environment of the
+// terminal, rather than from that of the process
+func TestCredentialStoreEnvironment(t *testing.T) {
+	term, path, processPath := ownNetrc(t, map[string]string{netrcWriteEnv: "true"})
+
+	// The store of the terminal, with fakes for the system keychain
+	// and the configuration of Git
+	store := CredentialStore(term).(*credStore)
+	ring, git := &fakeRing{}, &fakeGit{}
+	store.ring, store.git = ring, git
+
+	saveSession(t, store)
+	expectKeychain(t, ring, "")
+	expectHelper(t, git, false)
+	expectFile(t, path, furyEntry, 0600)
+	expectNoFile(t, processPath)
 }

@@ -14,8 +14,9 @@ import (
 
 // packagesRequest runs "packages" with the given flags, and without a
 // terminal to login from, then returns the token and the account that
-// its API request was sent with
-func packagesRequest(t *testing.T, auth terminal.Auther, flags []string) (token, account string) {
+// its API request was sent with. With env, the terminal has an
+// environment of its own; without, that of the process.
+func packagesRequest(t *testing.T, auth terminal.Auther, env map[string]string, flags []string) (token, account string) {
 	t.Helper()
 
 	var sent bool
@@ -29,6 +30,7 @@ func packagesRequest(t *testing.T, auth terminal.Auther, flags []string) (token,
 
 	term := terminal.NewForTest()
 	term.SetInteractive(false)
+	term.SetEnv(env)
 
 	cc := testContext(t, term, auth, server)
 	if err := runCommandNoErr(cc, append([]string{"packages"}, flags...)); err != nil {
@@ -61,7 +63,7 @@ func TestAuthTokenPrecedence(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("FURY_TOKEN", tc.env)
 
-			if got, _ := packagesRequest(t, tc.auth, tc.flags); got != tc.exp {
+			if got, _ := packagesRequest(t, tc.auth, nil, tc.flags); got != tc.exp {
 				t.Errorf("Expected token %q, got %q", tc.exp, got)
 			}
 		})
@@ -166,7 +168,7 @@ func TestAccountPrecedence(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("FURY_ACCOUNT", tc.env)
 
-			if _, got := packagesRequest(t, auth, tc.flags); got != tc.exp {
+			if _, got := packagesRequest(t, auth, nil, tc.flags); got != tc.exp {
 				t.Errorf("Expected account %q, got %q", tc.exp, got)
 			}
 		})
@@ -195,10 +197,24 @@ func TestAccountWithQuery(t *testing.T) {
 func TestHelpIgnoresEnv(t *testing.T) {
 	for env, value := range map[string]string{"FURY_RETRIES": "x", "FURY_API_URL": "://bad"} {
 		t.Run(env, func(t *testing.T) {
-			t.Setenv(env, value)
-			if out := helpOutput(t, "help", "packages"); !strings.Contains(out, "fury packages [flags]") {
+			out := helpOutputIn(t, envContext(t, map[string]string{env: value}), "help", "packages")
+			if !strings.Contains(out, "fury packages [flags]") {
 				t.Errorf("Expected the help of packages, got %q", out)
 			}
 		})
+	}
+}
+
+// The environment is that of the terminal, rather than of the process,
+// so that each session of a host has its own
+func TestEnvironmentOfTerminal(t *testing.T) {
+	t.Setenv("FURY_TOKEN", "process-token")
+	t.Setenv("FURY_ACCOUNT", "process-org")
+	env := map[string]string{"FURY_TOKEN": "session-token", "FURY_ACCOUNT": "session-org"}
+
+	token, account := packagesRequest(t, unusedAuther(), env, nil)
+	if token != env["FURY_TOKEN"] || account != env["FURY_ACCOUNT"] {
+		t.Errorf("Expected token %q and account %q, got %q and %q",
+			env["FURY_TOKEN"], env["FURY_ACCOUNT"], token, account)
 	}
 }

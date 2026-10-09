@@ -81,6 +81,14 @@ func TestRetries(t *testing.T) {
 	}
 }
 
+// FURY_RETRIES is read from the environment of the terminal, as the
+// token and the account are, rather than from that of the process
+func TestRetriesOfTerminal(t *testing.T) {
+	term := terminal.NewForTest()
+	term.SetEnv(map[string]string{"FURY_RETRIES": "x"})
+	expectUsageErrorAt(t, term, []string{"packages"}, `FURY_RETRIES must be a count, not "x"`)
+}
+
 // A request that cannot connect is sent again too, after a second
 func TestRetriesConnectionFailed(t *testing.T) {
 	t.Setenv("FURY_RETRIES", "1")

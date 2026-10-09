@@ -148,15 +148,14 @@ func testContext(t *testing.T, term terminal.Terminal, auth terminal.Auther, ser
 	return cc
 }
 
-// envContext builds a command context with no endpoint field set, so the
-// API endpoints come from the environment, which env sets for the test.
-// The user is logged in.
+// envContext builds a command context whose API endpoints are left to env,
+// the environment of its terminal, as no endpoint field is set. The user
+// is logged in.
 func envContext(t *testing.T, env map[string]string) context.Context {
 	t.Helper()
-	for name, value := range env {
-		t.Setenv(name, value)
-	}
-	return cli.TestContext(t.Context(), terminal.NewForTest(), terminal.TestAuther("user", "abc123", nil))
+	term := terminal.NewForTest()
+	term.SetEnv(env)
+	return cli.TestContext(t.Context(), term, terminal.TestAuther("user", "abc123", nil))
 }
 
 // expectNoFile asserts that there is nothing at path
@@ -369,7 +368,13 @@ func TestUsageErrorOutput(t *testing.T) {
 // for a user who is logged out and with no request of the API
 func expectUsageError(t *testing.T, args []string, msg string) {
 	t.Helper()
-	cc := testContext(t, terminal.NewForTest(), terminal.TestAuther("", "", nil), offlineServer(t))
+	expectUsageErrorAt(t, terminal.NewForTest(), args, msg)
+}
+
+// expectUsageErrorAt is expectUsageError at the given terminal
+func expectUsageErrorAt(t *testing.T, term terminal.TestTerm, args []string, msg string) {
+	t.Helper()
+	cc := testContext(t, term, terminal.TestAuther("", "", nil), offlineServer(t))
 	expectUsageErrorIn(t, cc, args, msg)
 }
 

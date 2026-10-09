@@ -27,16 +27,24 @@ type Auther interface {
 	Wipe() error
 }
 
-func Netrc() Auther {
-	return nrc{machines: netrcMachines}
+// Netrc is the session in the .netrc file, whose path is read
+// from the environment by getenv
+func Netrc(getenv func(string) string) Auther {
+	return newNetrc(getenv)
+}
+
+// newNetrc is Netrc as the concrete nrc, for the credential store
+func newNetrc(getenv func(string) string) nrc {
+	return nrc{machines: netrcMachines, getenv: getenv}
 }
 
 type nrc struct {
 	machines []string
+	getenv   func(string) string
 }
 
 func (n nrc) Auth() (string, string, error) {
-	net, _, _, err := loadNetrc()
+	net, _, _, err := n.load()
 	if err != nil {
 		return "", "", err
 	}
@@ -50,7 +58,7 @@ func (n nrc) Auth() (string, string, error) {
 }
 
 func (n nrc) Append(user, pass string) error {
-	return netrcUpdate(func(net *netrc.Netrc) {
+	return n.update(func(net *netrc.Netrc) {
 		// Entries that are there already would be found before the new ones
 		n.remove(net)
 		for _, m := range n.machines {
@@ -60,7 +68,7 @@ func (n nrc) Append(user, pass string) error {
 }
 
 func (n nrc) Wipe() error {
-	return netrcUpdate(n.remove)
+	return n.update(n.remove)
 }
 
 // remove removes every entry of each machine, as it may have several
@@ -82,10 +90,10 @@ func findMachine(net *netrc.Netrc, name string) *netrc.Machine {
 	return nil
 }
 
-// loadNetrc parses the .netrc file, and returns its content and its path
+// load parses the .netrc file, and returns its content and its path
 // as well. Without a file, it is read as an empty one.
-func loadNetrc() (*netrc.Netrc, []byte, string, error) {
-	path, err := netrcPath()
+func (n nrc) load() (*netrc.Netrc, []byte, string, error) {
+	path, err := n.path()
 	if err != nil {
 		return nil, nil, "", err
 	}
@@ -122,15 +130,16 @@ func parseNetrc(data []byte) (*netrc.Netrc, error) {
 	return netrc.Parse(bytes.NewReader(append([]byte("\n"), data...)))
 }
 
-func netrcUpdate(update func(net *netrc.Netrc)) error {
-	net, data, path, err := loadNetrc()
+// update applies change to the .netrc file, and writes it if it changed
+func (n nrc) update(change func(net *netrc.Netrc)) error {
+	net, data, path, err := n.load()
 	if err != nil {
 		return err
 	}
 
 	// Apply updates
 	before, _ := net.MarshalText()
-	update(net)
+	change(net)
 
 	// Without a change, there is nothing to write, nor a file to create
 	out, _ := net.MarshalText()
@@ -209,9 +218,10 @@ func writeInPlace(path string, data []byte) error {
 	return os.WriteFile(path, data, 0600)
 }
 
-func netrcPath() (string, error) {
-
-	if path := os.Getenv("NETRC"); path != "" {
+// path is the path of the .netrc file: that of NETRC in the environment,
+// or else the one in the home directory of the process
+func (n nrc) path() (string, error) {
+	if path := n.getenv("NETRC"); path != "" {
 		return path, nil
 	}
 
@@ -225,5 +235,4 @@ func netrcPath() (string, error) {
 	}
 
 	return filepath.Join(home, ".netrc"), nil
-
 }

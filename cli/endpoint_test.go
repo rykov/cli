@@ -74,10 +74,11 @@ func TestPushEndpointFromEnv(t *testing.T) {
 // The endpoint fields, as a host or a test sets them, take precedence
 // over the environment, as a flag does over its variable
 func TestEndpointFieldOverEnv(t *testing.T) {
-	t.Setenv("FURY_API_URL", offlineServer(t).URL)
+	term := terminal.NewForTest()
+	term.SetEnv(map[string]string{"FURY_API_URL": offlineServer(t).URL})
 
 	server := testutil.APIServer(t, "GET", "/packages", "[]", 200)
-	cc := testContext(t, terminal.NewForTest(), terminal.TestAuther("user", "abc123", nil), server)
+	cc := testContext(t, term, terminal.TestAuther("user", "abc123", nil), server)
 	if err := runCommandNoErr(cc, []string{"packages"}); err != nil {
 		t.Fatal(err)
 	}

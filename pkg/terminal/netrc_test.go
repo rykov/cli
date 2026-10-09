@@ -3,6 +3,7 @@ package terminal
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -51,6 +52,24 @@ func useNetrc(t *testing.T, content string) string {
 	}
 	t.Setenv("NETRC", path)
 	return path
+}
+
+// processNetrc is the .netrc of the process, which useNetrc points NETRC at
+var processNetrc = newNetrc(os.Getenv)
+
+// ownNetrc is a terminal whose environment, env with NETRC, names a .netrc
+// of its own, apart from that of the process, which useNetrc has set.
+// Both paths are returned, to tell the two files apart.
+func ownNetrc(t *testing.T, env map[string]string) (term *testTerm, path, processPath string) {
+	t.Helper()
+	processPath = useNetrc(t, "")
+	path = filepath.Join(t.TempDir(), "netrc")
+
+	own := map[string]string{"NETRC": path}
+	maps.Copy(own, env)
+	term = NewForTest()
+	term.SetEnv(own)
+	return term, path, processPath
 }
 
 // writeNetrc writes a file that others can read, whatever the umask, which
@@ -105,8 +124,8 @@ func expectAuth(t *testing.T, auth Auther, user, pass string) {
 func expectUpdateFails(t *testing.T, msg string) {
 	t.Helper()
 	for op, err := range map[string]error{
-		"Append": Netrc().Append("u@example.com", "other"),
-		"Wipe":   Netrc().Wipe(),
+		"Append": processNetrc.Append("u@example.com", "other"),
+		"Wipe":   processNetrc.Wipe(),
 	} {
 		if err == nil || err.Error() != msg {
 			t.Errorf("Expected %s to fail with %q, got: %v", op, msg, err)
@@ -213,11 +232,11 @@ func TestNetrcUpdate(t *testing.T) {
 			path := useNetrc(t, tc.before)
 			before, _ := os.Stat(path)
 
-			saveSession(t, Netrc())
+			saveSession(t, processNetrc)
 			expectFile(t, path, tc.saved, 0600)
 			expectReplaced(t, path, before, true)
 
-			wipeSession(t, Netrc())
+			wipeSession(t, processNetrc)
 			expectFile(t, path, tc.wiped, 0600)
 			expectAlone(t, path)
 		})
@@ -244,7 +263,7 @@ func TestNetrcUpdateThroughLink(t *testing.T) {
 		return os.Rename(tmp, path)
 	})
 
-	saveSession(t, Netrc())
+	saveSession(t, processNetrc)
 	expectFile(t, target, savedEntries, 0600)
 	expectReplaced(t, target, before, true)
 
@@ -291,7 +310,7 @@ func TestNetrcUpdateInPlace(t *testing.T) {
 			before, _ := os.Stat(path)
 			tc.setup(t, path)
 
-			saveSession(t, Netrc())
+			saveSession(t, processNetrc)
 			expectFile(t, path, tc.before+furyEntry, 0600)
 			expectReplaced(t, path, before, false)
 			expectAlone(t, path)
@@ -321,7 +340,7 @@ func TestNetrcUpdateFails(t *testing.T) {
 			path := useNetrc(t, otherEntry)
 			setDuring(t, &createTemp, fail)
 
-			if err := Netrc().Append("u@example.com", "abc123"); err == nil {
+			if err := processNetrc.Append("u@example.com", "abc123"); err == nil {
 				t.Error("Expected an error")
 			}
 
@@ -342,7 +361,7 @@ func TestNetrcUpdateMacro(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			path := useNetrc(t, content)
-			expectAuth(t, Netrc(), "u@example.com", "abc123")
+			expectAuth(t, processNetrc, "u@example.com", "abc123")
 
 			expectUpdateFails(t, fmt.Sprintf("Error updating .netrc file %q: its macros (macdef) would not be kept. "+
 				"Edit its entries for api.fury.io and git.fury.io by hand, or set FURY_TOKEN to authenticate instead.", path))
@@ -354,7 +373,7 @@ func TestNetrcUpdateMacro(t *testing.T) {
 // Wiping removes every entry that Gemfury has, and not only the first of each
 func TestNetrcWipe(t *testing.T) {
 	path := useNetrc(t, staleEntries)
-	wipeSession(t, Netrc())
+	wipeSession(t, processNetrc)
 	expectFile(t, path, otherEntry, 0600)
 }
 
@@ -364,7 +383,7 @@ func TestNetrcUnreadable(t *testing.T) {
 	expectUnreadable := func(t *testing.T, path, cause string) {
 		t.Helper()
 		msg := fmt.Sprintf("Error reading .netrc file %q: %s", path, cause)
-		if _, _, err := Netrc().Auth(); err == nil || err.Error() != msg {
+		if _, _, err := processNetrc.Auth(); err == nil || err.Error() != msg {
 			t.Errorf("Expected Auth to fail with %q, got: %v", msg, err)
 		}
 		expectUpdateFails(t, msg)
@@ -403,7 +422,7 @@ func TestNetrcPath(t *testing.T) {
 		name = "_netrc"
 	}
 
-	saveSession(t, Netrc())
+	saveSession(t, processNetrc)
 	expectFile(t, filepath.Join(home, name), furyEntry, 0600)
 }
 
@@ -420,7 +439,17 @@ func TestNetrcAuth(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			useNetrc(t, tc.content)
-			expectAuth(t, Netrc(), tc.user, tc.pass)
+			expectAuth(t, processNetrc, tc.user, tc.pass)
 		})
 	}
+}
+
+// The file is the one that NETRC names in the environment that Netrc is
+// given, rather than in that of the process
+func TestNetrcEnvironment(t *testing.T) {
+	term, path, processPath := ownNetrc(t, nil)
+
+	saveSession(t, Netrc(term.Getenv))
+	expectFile(t, path, furyEntry, 0600)
+	expectNoFile(t, processPath)
 }

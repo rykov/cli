@@ -88,7 +88,8 @@ var _ FallbackAuther = (*credStore)(nil)
 // .netrc: where there is no keychain, where the keychain fails, or as
 // asked by FURY_NETRC_WRITE=true. A session in the keychain is not in
 // .netrc for Git to read, so Git is given "fury git credentials" as its
-// credential helper for git.fury.io.
+// credential helper for git.fury.io. The environment, of FURY_NETRC_WRITE
+// and NETRC, is that of the terminal.
 func CredentialStore(t Terminal) Auther {
 	timeout := keyringUnattendedTimeout
 	if t.IsInteractive() {
@@ -96,7 +97,7 @@ func CredentialStore(t Terminal) Auther {
 	}
 
 	return &credStore{
-		netrc:     Netrc(),
+		netrc:     newNetrc(t.Getenv),
 		ring:      systemKeyring{},
 		git:       gitConfig{},
 		reachable: keyringReachable,
@@ -107,7 +108,7 @@ func CredentialStore(t Terminal) Auther {
 }
 
 type credStore struct {
-	netrc     Auther
+	netrc     nrc
 	ring      secrets
 	git       gitHelper
 	reachable func() bool
@@ -129,7 +130,7 @@ func (s *credStore) Auth() (string, string, error) {
 		return user, pass, err
 	}
 
-	if netrcOnly() {
+	if s.netrcOnly() {
 		return "", "", nil
 	}
 
@@ -146,7 +147,7 @@ func (s *credStore) Auth() (string, string, error) {
 func (s *credStore) Append(user, pass string) error {
 	s.session, s.fallback, s.gitSetup = nil, "", nil
 
-	if netrcOnly() {
+	if s.netrcOnly() {
 		return s.netrc.Append(user, pass)
 	}
 
@@ -166,7 +167,7 @@ func (s *credStore) Append(user, pass string) error {
 		return err
 	}
 
-	s.fallback, _ = netrcPath()
+	s.fallback, _ = s.netrc.path()
 	return nil
 }
 
@@ -267,8 +268,8 @@ func (s *credStore) ask(question func() (string, error)) (string, error) {
 }
 
 // netrcOnly reports whether the session is kept in .netrc, as asked
-func netrcOnly() bool {
-	return strings.EqualFold(strings.TrimSpace(os.Getenv(netrcWriteEnv)), "true")
+func (s *credStore) netrcOnly() bool {
+	return strings.EqualFold(strings.TrimSpace(s.netrc.getenv(netrcWriteEnv)), "true")
 }
 
 // keyringReachable reports whether there may be a keychain to ask. Other

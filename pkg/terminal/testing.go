@@ -32,6 +32,7 @@ func NewForTest() *testTerm {
 type testTerm struct {
 	interactive    bool
 	outTTY         bool
+	env            map[string]string
 	prompts        map[string]string
 	streams        []*bytes.Buffer
 	bars, spinners int
@@ -56,6 +57,21 @@ func (tt testTerm) IsOutTTY() bool {
 // SetOutTTY(true) simulates output that is read at a terminal
 func (tt *testTerm) SetOutTTY(outTTY bool) {
 	tt.outTTY = outTTY
+}
+
+// Getenv reads the environment that SetEnv has given, or else that
+// of the process, as tests set it
+func (tt testTerm) Getenv(name string) string {
+	if tt.env != nil {
+		return tt.env[name]
+	}
+	return tt.term.Getenv(name)
+}
+
+// SetEnv gives the terminal an environment of its own, as a host
+// would; nil is that of the process again
+func (tt *testTerm) SetEnv(env map[string]string) {
+	tt.env = env
 }
 
 func (tt testTerm) ErrBytes() []byte {

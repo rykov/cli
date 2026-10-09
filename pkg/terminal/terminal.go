@@ -41,6 +41,10 @@ type Terminal interface {
 	IOIn() io.ReadCloser
 	IOErr() io.Writer
 	IOOut() io.Writer
+
+	// Getenv reads the environment of the session, which need not be
+	// that of the process, as for each session of a host
+	Getenv(name string) string
 }
 
 func New() Terminal {
@@ -87,6 +91,11 @@ func (t term) IsInteractive() bool {
 
 func (t term) IsOutTTY() bool {
 	return isTerminal(t.ioOut)
+}
+
+// Getenv reads the environment of the process
+func (t term) Getenv(name string) string {
+	return os.Getenv(name)
 }
 
 func (t term) RunPrompt(p *promptui.Prompt) (string, error) {

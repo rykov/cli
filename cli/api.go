@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -35,7 +34,7 @@ func newAPIClientWithToken(cc context.Context, token string) (*api.Client, error
 	c := api.NewClient(token, contextAccount(cc))
 
 	// FURY_RETRIES overrides the default count
-	if env := strings.TrimSpace(os.Getenv("FURY_RETRIES")); env != "" {
+	if env := contextEnv(cc, "FURY_RETRIES"); env != "" {
 		retries, err := strconv.Atoi(env)
 		if err != nil || retries < 0 {
 			return nil, usageErrorf("FURY_RETRIES must be a count, not %q", env)
@@ -44,12 +43,12 @@ func newAPIClientWithToken(cc context.Context, token string) (*api.Client, error
 	}
 
 	// Endpoint overrides (testing, staging), from the fields or the environment
-	if u, err := endpointOf(flags.PushEndpoint, "FURY_PUSH_URL"); err != nil {
+	if u, err := endpointOf(cc, flags.PushEndpoint, "FURY_PUSH_URL"); err != nil {
 		return nil, err
 	} else if u != nil {
 		c.PushEndpoint = u
 	}
-	if u, err := endpointOf(flags.Endpoint, "FURY_API_URL"); err != nil {
+	if u, err := endpointOf(cc, flags.Endpoint, "FURY_API_URL"); err != nil {
 		return nil, err
 	} else if u != nil {
 		c.Endpoint = u
@@ -92,7 +91,7 @@ func inlineAuthToken(cc context.Context) (string, error) {
 		}
 		flags.AuthToken = token
 	}
-	return flagOrEnv(flags.AuthToken, "FURY_TOKEN"), nil
+	return flagOrEnv(cc, flags.AuthToken, "FURY_TOKEN"), nil
 }
 
 // readToken reads the token for --api-token -: asked for, masked, when
@@ -125,16 +124,22 @@ func readToken(term terminal.Terminal) (string, error) {
 // contextAccount is the account to act on: --account or else FURY_ACCOUNT.
 // When empty, it is the account of the authenticated user.
 func contextAccount(cc context.Context) string {
-	return flagOrEnv(ctx.GlobalFlags(cc).Account, "FURY_ACCOUNT")
+	return flagOrEnv(cc, ctx.GlobalFlags(cc).Account, "FURY_ACCOUNT")
 }
 
 // flagOrEnv is the value of a global flag or, when the flag
 // is not given, of the environment variable standing in for it
-func flagOrEnv(flag, env string) string {
+func flagOrEnv(cc context.Context, flag, env string) string {
 	if flag != "" {
 		return flag
 	}
-	return strings.TrimSpace(os.Getenv(env))
+	return contextEnv(cc, env)
+}
+
+// contextEnv is the value of an environment variable, trimmed, as read
+// from the environment of the terminal rather than of the process
+func contextEnv(cc context.Context, name string) string {
+	return strings.TrimSpace(ctx.Terminal(cc).Getenv(name))
 }
 
 // endpointOf is the base URL of an API: the field a host or a test sets,
@@ -142,12 +147,12 @@ func flagOrEnv(flag, env string) string {
 // names a host (https assumed). The URL may have a path, below which the
 // client requests, but a query or a fragment is no endpoint, so it is
 // refused. Nil leaves the client's default.
-func endpointOf(field, env string) (*url.URL, error) {
+func endpointOf(cc context.Context, field, env string) (*url.URL, error) {
 	if field != "" {
 		return url.Parse(field)
 	}
 
-	value := strings.TrimSpace(os.Getenv(env))
+	value := contextEnv(cc, env)
 	if value == "" {
 		return nil, nil
 	}
