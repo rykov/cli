@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 )
 
 type Terminal interface {
@@ -38,13 +39,17 @@ type Terminal interface {
 	// a file: whether a person reads what is printed, as it is printed
 	IsOutTTY() bool
 
-	IOIn() io.ReadCloser
-	IOErr() io.Writer
-	IOOut() io.Writer
+	// TimeLocation is the zone that times are shown in: that of the
+	// process, or of each session of a host. It is never nil.
+	TimeLocation() *time.Location
 
 	// Getenv reads the environment of the session, which need not be
 	// that of the process, as for each session of a host
 	Getenv(name string) string
+
+	IOIn() io.ReadCloser
+	IOErr() io.Writer
+	IOOut() io.Writer
 }
 
 func New() Terminal {
@@ -91,6 +96,11 @@ func (t term) IsInteractive() bool {
 
 func (t term) IsOutTTY() bool {
 	return isTerminal(t.ioOut)
+}
+
+// TimeLocation is the zone of the process
+func (t term) TimeLocation() *time.Location {
+	return time.Local
 }
 
 // Getenv reads the environment of the process

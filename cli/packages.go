@@ -78,9 +78,9 @@ func termPrintVersions(term terminal.Terminal, versions []*api.Version) {
 	w := tabwriter.NewWriter(term.IOOut(), 0, 0, 2, ' ', 0)
 	fmt.Fprintf(w, "version\tcreated_by\tcreated_at\tkind\tfilename\n")
 
-	tty := term.IsOutTTY()
+	loc, tty := term.TimeLocation(), term.IsOutTTY()
 	for _, v := range versions {
-		createdAt := timeString(v.CreatedAt, tty)
+		createdAt := timeString(v.CreatedAt, loc, tty)
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", v.Version, v.DisplayCreatedBy(), createdAt, v.DisplayKind(), v.Filename)
 	}
 

@@ -29,8 +29,6 @@ var failedOutRegexp = regexp.MustCompile(`(?m)^(Usage:|No .* found)`)
 
 // Top-level testing initializer
 func TestMain(m *testing.M) {
-	os.Setenv("TZ", "US/Pacific")
-
 	// Tests run the same whatever the developer's own Gemfury setup
 	for _, kv := range os.Environ() {
 		if strings.HasPrefix(kv, "FURY_") {

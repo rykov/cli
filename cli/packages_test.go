@@ -144,16 +144,14 @@ func TestVersionsCommandSuccess(t *testing.T) {
 	path := "/packages/pkg-name/versions"
 	server := testutil.APIServerPaginated(t, "GET", path, versionsResponses, 200)
 
-	cc := cli.TestContext(t.Context(), term, auth)
-	flags := ctx.GlobalFlags(cc)
-	flags.Endpoint = server.URL
-
+	cc := testContext(t, term, auth, server)
 	err := runCommandNoErr(cc, []string{"versions", "pkg-name"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	exp := "1.2.3 user1 2011-05-26 17:39 -07:00 js foo-1.2.3.tgz 3.2.1 user2 2011-01-26 16:44 -08:00 js foo-3.2.1.tgz"
+	// Piped, times are RFC 3339, in the zone of the terminal
+	exp := versionsListing("2011-05-27T09:39:07+09:00", "2011-01-27T09:44:00+09:00")
 	if outStr := compactString(term.OutBytes()); !strings.HasSuffix(outStr, exp) {
 		t.Errorf("Expected output to include %q, got %q", exp, outStr)
 	}
@@ -180,6 +178,9 @@ func TestVersionsCommandUnknownFields(t *testing.T) {
 // the other tests have, as they are piped by default. The "ago" is under
 // a day, rounded down, and not of a time ahead of the clock.
 func TestVersionsCommandAtTerminal(t *testing.T) {
+	term := terminal.NewForTest()
+	term.SetOutTTY(true)
+
 	now := time.Now()
 	cases := []struct {
 		age time.Duration
@@ -198,11 +199,9 @@ func TestVersionsCommandAtTerminal(t *testing.T) {
 		body = append(body, fmt.Sprintf(`{"version": %q, "filename": "foo-%s.tgz", "created_at": %q}`,
 			ver, ver, created.Format(time.RFC3339)))
 		rows = append(rows, fmt.Sprintf("%s N/A %s%s N/A foo-%s.tgz",
-			ver, created.Local().Format("2006-01-02 15:04"), c.ago, ver))
+			ver, created.In(term.TimeLocation()).Format("2006-01-02 15:04"), c.ago, ver))
 	}
 
-	term := terminal.NewForTest()
-	term.SetOutTTY(true)
 	server := testutil.APIServer(t, "GET", "/packages/pkg-name/versions", "["+strings.Join(body, ",")+"]", 200)
 
 	cc := testContext(t, term, terminal.TestAuther("user", "abc123", nil), server)
@@ -213,6 +212,45 @@ func TestVersionsCommandAtTerminal(t *testing.T) {
 	exp := "version created_by created_at kind filename " + strings.Join(rows, " ")
 	if outStr := compactString(term.OutBytes()); !strings.HasSuffix(outStr, exp) {
 		t.Errorf("Expected output to include %q, got %q", exp, outStr)
+	}
+}
+
+// versionsListing is the listing of versionsResponses, as compacted,
+// with its two times as given
+func versionsListing(first, second string) string {
+	return fmt.Sprintf("1.2.3 user1 %s js foo-1.2.3.tgz 3.2.1 user2 %s js foo-3.2.1.tgz", first, second)
+}
+
+// Times are shown in the zone that the terminal is given, as a host gives
+// each session its own, piped and at a terminal alike
+func TestVersionsCommandTimeLocation(t *testing.T) {
+	minus5 := time.FixedZone("UTC-5", -5*60*60)
+
+	for name, tc := range map[string]struct {
+		loc           *time.Location
+		tty           bool
+		first, second string // The times of the two versions, as shown
+	}{
+		"piped":       {minus5, false, "2011-05-26T19:39:07-05:00", "2011-01-26T19:44:00-05:00"},
+		"at terminal": {minus5, true, "2011-05-26 19:39", "2011-01-26 19:44"},
+		"UTC piped":   {time.UTC, false, "2011-05-27T00:39:07Z", "2011-01-27T00:44:00Z"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			term := terminal.NewForTest()
+			term.SetOutTTY(tc.tty)
+			term.SetTimeLocation(tc.loc)
+			server := testutil.APIServerPaginated(t, "GET", "/packages/pkg-name/versions", versionsResponses, 200)
+
+			cc := testContext(t, term, terminal.TestAuther("user", "abc123", nil), server)
+			if err := runCommandNoErr(cc, []string{"versions", "pkg-name"}); err != nil {
+				t.Fatal(err)
+			}
+
+			exp := versionsListing(tc.first, tc.second)
+			if outStr := compactString(term.OutBytes()); !strings.HasSuffix(outStr, exp) {
+				t.Errorf("Expected output to include %q, got %q", exp, outStr)
+			}
+		})
 	}
 }
 

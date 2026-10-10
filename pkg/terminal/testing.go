@@ -7,7 +7,13 @@ import (
 	"context"
 	"io"
 	"strings"
+	"time"
 )
+
+// testLocation is the zone of a test terminal: one of its own, so that no
+// test depends on the zone of the machine, and not UTC, which the API
+// sends, so that a time shown unconverted is caught
+var testLocation = time.FixedZone("UTC+9", 9*60*60)
 
 type TestTerm interface {
 	ErrBytes() []byte
@@ -18,9 +24,10 @@ type TestTerm interface {
 func NewForTest() *testTerm {
 	streams := []*bytes.Buffer{{}, {}, {}}
 	return &testTerm{
-		interactive: true,
-		prompts:     map[string]string{},
-		streams:     streams,
+		interactive:  true,
+		timeLocation: testLocation,
+		prompts:      map[string]string{},
+		streams:      streams,
 		term: &term{
 			ioErr: writeCloser{streams[0]},
 			ioOut: writeCloser{streams[1]},
@@ -32,6 +39,7 @@ func NewForTest() *testTerm {
 type testTerm struct {
 	interactive    bool
 	outTTY         bool
+	timeLocation   *time.Location
 	env            map[string]string
 	prompts        map[string]string
 	streams        []*bytes.Buffer
@@ -57,6 +65,16 @@ func (tt testTerm) IsOutTTY() bool {
 // SetOutTTY(true) simulates output that is read at a terminal
 func (tt *testTerm) SetOutTTY(outTTY bool) {
 	tt.outTTY = outTTY
+}
+
+// Tests show times in testLocation, unless told otherwise
+func (tt testTerm) TimeLocation() *time.Location {
+	return tt.timeLocation
+}
+
+// SetTimeLocation shows times in the given zone, as for a session of a host
+func (tt *testTerm) SetTimeLocation(loc *time.Location) {
+	tt.timeLocation = loc
 }
 
 // Getenv reads the environment that SetEnv has given, or else that
