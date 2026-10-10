@@ -27,9 +27,11 @@ func main() {
 	rootCmd.Version = Version
 
 	// Support for legacy (Ruby) CLI command
-	if args := convertLegacyArgs(os.Args); args != nil {
-		rootCmd.SetArgs(args)
+	args := os.Args[1:]
+	if legacy := convertLegacyArgs(os.Args); legacy != nil {
+		args = legacy
 	}
+	rootCmd.SetArgs(args)
 
 	// Execute reports any error; only the exit status is left to set
 	err := cli.Execute(cc, rootCmd)

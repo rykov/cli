@@ -51,6 +51,25 @@ func TestRootCommand(t *testing.T) {
 	}
 }
 
+// Without arguments from its caller, the root shows its help rather than
+// run the command line of the process, which may be a host. The process
+// is given a command, since the flags of a test binary alone show help.
+func TestRootIgnoresProcessArgs(t *testing.T) {
+	args := os.Args
+	os.Args = []string{"fury", "not-a-command"}
+	t.Cleanup(func() { os.Args = args })
+
+	term := terminal.NewForTest()
+	cc := testContext(t, term, terminal.TestAuther("", "", nil), offlineServer(t))
+	if err := cli.Execute(cc, cli.NewRootCommand(cc)); err != nil {
+		t.Fatal(err)
+	}
+
+	if out, exp := string(term.OutBytes()), helpOutput(t, "--help"); out != exp {
+		t.Errorf("Expected help, got %q", out)
+	}
+}
+
 // --json is a flag of the commands that take it, listed in their help
 // and shown with it. Anywhere else it is unknown, as any unknown flag:
 // before the command, between commands, or with help or the version.

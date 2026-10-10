@@ -7,7 +7,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -52,18 +54,75 @@ type Terminal interface {
 	IOOut() io.Writer
 }
 
+// New is the terminal of the process: its streams, its environment, and
+// its zone
 func New() Terminal {
 	return &term{
-		ioErr: os.Stderr,
-		ioOut: os.Stdout,
-		ioIn:  os.Stdin,
+		ioErr:  os.Stderr,
+		ioOut:  os.Stdout,
+		ioIn:   os.Stdin,
+		getenv: os.Getenv,
+		loc:    time.Local,
 	}
 }
 
+// Session is what a host gives the terminal of a session: its streams,
+// its environment, and its zone
+type Session struct {
+	In       io.Reader
+	Out, Err io.Writer
+	Env      map[string]string // Of the session: nil is an empty one, never the host's
+	Location *time.Location    // Zone that times are shown in: nil is UTC
+}
+
+// NewSession is the terminal of a session of a host. Whatever its streams,
+// it is not interactive and its output is not a TTY: nothing is asked, and
+// output is as when piped. A host that wants more, such as output for a
+// person, embeds it and overrides IsOutTTY.
+func NewSession(s Session) Terminal {
+	if s.In == nil {
+		s.In = strings.NewReader("")
+	}
+	if s.Out == nil {
+		s.Out = io.Discard
+	}
+	if s.Err == nil {
+		s.Err = io.Discard
+	}
+	if s.Location == nil {
+		s.Location = time.UTC
+	}
+
+	return &term{
+		ioErr:  writeCloser{s.Err},
+		ioOut:  writeCloser{s.Out},
+		ioIn:   io.NopCloser(s.In),
+		getenv: envGetenv(s.Env),
+		loc:    s.Location,
+	}
+}
+
+// envGetenv reads a copy of env, so that the caller may change its own
+func envGetenv(env map[string]string) func(string) string {
+	env = maps.Clone(env)
+	return func(name string) string { return env[name] }
+}
+
 type term struct {
-	ioErr io.WriteCloser
-	ioOut io.WriteCloser
-	ioIn  io.ReadCloser
+	ioErr  io.WriteCloser
+	ioOut  io.WriteCloser
+	ioIn   io.ReadCloser
+	getenv func(string) string
+	loc    *time.Location
+}
+
+// Equivalent to io.NopCloser for writers
+type writeCloser struct {
+	io.Writer
+}
+
+func (writeCloser) Close() error {
+	return nil
 }
 
 func (t term) Printf(f string, a ...any) (int, error) {
@@ -98,14 +157,12 @@ func (t term) IsOutTTY() bool {
 	return isTerminal(t.ioOut)
 }
 
-// TimeLocation is the zone of the process
 func (t term) TimeLocation() *time.Location {
-	return time.Local
+	return t.loc
 }
 
-// Getenv reads the environment of the process
 func (t term) Getenv(name string) string {
-	return os.Getenv(name)
+	return t.getenv(name)
 }
 
 func (t term) RunPrompt(p *promptui.Prompt) (string, error) {

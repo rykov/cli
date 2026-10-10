@@ -66,6 +66,10 @@ Exit status:
 		SilenceUsage:  true,
 	}
 
+	// Arguments are given by the caller, never read from the process,
+	// which may be a host running commands for its sessions
+	rootCmd.SetArgs([]string{})
+
 	// Connect I/O
 	term := ctx.Terminal(cc)
 	rootCmd.SetIn(term.IOIn())

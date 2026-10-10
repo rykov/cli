@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"os"
 	"strings"
 	"time"
 )
@@ -24,14 +25,15 @@ type TestTerm interface {
 func NewForTest() *testTerm {
 	streams := []*bytes.Buffer{{}, {}, {}}
 	return &testTerm{
-		interactive:  true,
-		timeLocation: testLocation,
-		prompts:      map[string]string{},
-		streams:      streams,
+		interactive: true,
+		prompts:     map[string]string{},
+		streams:     streams,
 		term: &term{
-			ioErr: writeCloser{streams[0]},
-			ioOut: writeCloser{streams[1]},
-			ioIn:  io.NopCloser(streams[2]),
+			ioErr:  writeCloser{streams[0]},
+			ioOut:  writeCloser{streams[1]},
+			ioIn:   io.NopCloser(streams[2]),
+			getenv: os.Getenv,
+			loc:    testLocation,
 		},
 	}
 }
@@ -39,8 +41,6 @@ func NewForTest() *testTerm {
 type testTerm struct {
 	interactive    bool
 	outTTY         bool
-	timeLocation   *time.Location
-	env            map[string]string
 	prompts        map[string]string
 	streams        []*bytes.Buffer
 	bars, spinners int
@@ -67,29 +67,19 @@ func (tt *testTerm) SetOutTTY(outTTY bool) {
 	tt.outTTY = outTTY
 }
 
-// Tests show times in testLocation, unless told otherwise
-func (tt testTerm) TimeLocation() *time.Location {
-	return tt.timeLocation
-}
-
-// SetTimeLocation shows times in the given zone, as for a session of a host
+// SetTimeLocation shows times in the given zone, as for a session of a
+// host, rather than in testLocation
 func (tt *testTerm) SetTimeLocation(loc *time.Location) {
-	tt.timeLocation = loc
+	tt.loc = loc
 }
 
-// Getenv reads the environment that SetEnv has given, or else that
-// of the process, as tests set it
-func (tt testTerm) Getenv(name string) string {
-	if tt.env != nil {
-		return tt.env[name]
-	}
-	return tt.term.Getenv(name)
-}
-
-// SetEnv gives the terminal an environment of its own, as a host
-// would; nil is that of the process again
+// SetEnv gives the terminal an environment of its own, as a host would,
+// rather than that of the process, as tests set it; nil is that again
 func (tt *testTerm) SetEnv(env map[string]string) {
-	tt.env = env
+	tt.getenv = os.Getenv
+	if env != nil {
+		tt.getenv = envGetenv(env)
+	}
 }
 
 func (tt testTerm) ErrBytes() []byte {
@@ -203,13 +193,4 @@ type writerFunc func([]byte) (int, error)
 
 func (fn writerFunc) Write(b []byte) (int, error) {
 	return fn(b)
-}
-
-// Equivalent to io.NopCloser for writers
-type writeCloser struct {
-	io.Writer
-}
-
-func (writeCloser) Close() error {
-	return nil
 }

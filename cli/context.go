@@ -8,19 +8,22 @@ import (
 	"context"
 )
 
-// CommandContext is the context for executing commands
-// including global flags, auther, terminal, and the disk
+// NewContext is the context for executing a command with the given
+// terminal, auther, and file system, such as those of a session of a host.
+// It is for one run of one command, which parses its flags into it.
+func NewContext(parent context.Context, t terminal.Terminal, a terminal.Auther, fsys afero.Fs) context.Context {
+	return ctx.NewContext(parent, ctx.Cmd{Auther: a, Terminal: t, FS: fsys})
+}
+
+// CommandContext is the context for executing commands in the process:
+// its terminal, its saved credentials, and its disk
 func CommandContext() context.Context {
 	term := terminal.New()
-	return ctx.NewContext(context.Background(), ctx.Cmd{
-		Auther:   terminal.CredentialStore(term),
-		Terminal: term,
-		FS:       afero.NewOsFs(),
-	})
+	return NewContext(context.Background(), term, terminal.CredentialStore(term), afero.NewOsFs())
 }
 
 // TestContext is the context for executing commands in testing,
 // derived from the parent context, such as the one of the test
 func TestContext(parent context.Context, t terminal.Terminal, a terminal.Auther) context.Context {
-	return ctx.NewContext(parent, ctx.Cmd{Auther: a, Terminal: t, FS: afero.NewOsFs()})
+	return NewContext(parent, t, a, afero.NewOsFs())
 }
