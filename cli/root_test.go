@@ -6,6 +6,7 @@ import (
 	"github.com/gemfury/cli/internal/ctx"
 	"github.com/gemfury/cli/internal/testutil"
 	"github.com/gemfury/cli/pkg/terminal"
+	"github.com/spf13/afero"
 	"github.com/spf13/cobra"
 
 	"context"
@@ -158,10 +159,18 @@ func envContext(t *testing.T, env map[string]string) context.Context {
 	return cli.TestContext(t.Context(), term, terminal.TestAuther("user", "abc123", nil))
 }
 
-// expectNoFile asserts that there is nothing at path
-func expectNoFile(t *testing.T, path string) {
+// withFS replaces the file system of a command context, such as one of
+// testContext, for a test that must not touch the disk
+func withFS(cc context.Context, fsys afero.Fs) context.Context {
+	c := ctx.FromContext(cc)
+	c.FS = fsys
+	return ctx.NewContext(cc, c)
+}
+
+// expectNoFile asserts that there is nothing at path in fsys
+func expectNoFile(t *testing.T, fsys afero.Fs, path string) {
 	t.Helper()
-	if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := fsys.Stat(path); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("Expected no file at %s, got: %v", path, err)
 	}
 }

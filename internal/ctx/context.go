@@ -2,6 +2,7 @@ package ctx
 
 import (
 	"github.com/gemfury/cli/pkg/terminal"
+	"github.com/spf13/afero"
 
 	"context"
 	"time"
@@ -26,7 +27,9 @@ type CmdGlobalFlags struct {
 }
 
 // Cmd is what a command runs with: its global flags, which Cobra parses
-// into, its auther, and its terminal, which has its environment.
+// into, its auther, its terminal, which has its environment, and its file
+// system: the disk of the process, or a root of its own for each session
+// of a host.
 //
 // It is stored by value, so that a context derived with another terminal
 // leaves its parent as it was. The flags are a pointer, shared by both,
@@ -35,6 +38,7 @@ type Cmd struct {
 	Flags    *CmdGlobalFlags
 	Auther   terminal.Auther
 	Terminal terminal.Terminal
+	FS       afero.Fs
 }
 
 // NewContext is the context of a command. Its flags are made here,
@@ -68,6 +72,10 @@ func Auther(ctx context.Context) terminal.Auther {
 
 func Terminal(ctx context.Context) terminal.Terminal {
 	return FromContext(ctx).Terminal
+}
+
+func FS(ctx context.Context) afero.Fs {
+	return FromContext(ctx).FS
 }
 
 func TestTerm(ctx context.Context) terminal.TestTerm {

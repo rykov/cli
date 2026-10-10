@@ -6,6 +6,7 @@ import (
 	"github.com/gemfury/cli/internal/ctx"
 	"github.com/gemfury/cli/internal/testutil"
 	"github.com/gemfury/cli/pkg/terminal"
+	"github.com/spf13/afero"
 
 	"errors"
 	"fmt"
@@ -270,6 +271,27 @@ func TestPushCommandDirectory(t *testing.T) {
 	expectOutput(t, term,
 		fmt.Sprintf("Uploading %s - is a directory\n", filepath.Base(dir)),
 		fmt.Sprintf("Error: read %s: is a directory\n", dir))
+}
+
+// Files are read from the file system of the context, not from the disk:
+// the sample package, which is on disk, is not found
+func TestPushCommandFS(t *testing.T) {
+	auth := terminal.TestAuther("user", "abc123", nil)
+	term := terminal.NewForTest()
+	server := testutil.APIServer(t, "POST", "/uploads", pushResponse, 200)
+
+	fsys := afero.NewMemMapFs()
+	cc := withFS(testContext(t, term, auth, server), fsys)
+	if err := afero.WriteFile(fsys, "/pkg-1.0.0.gem", []byte("gem"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := runCommand(cc, []string{"push", "/pkg-1.0.0.gem", samplePackagePath()})
+	expectSummaryError(t, err, os.ErrNotExist, "1 of 2 uploads failed")
+
+	expectOutput(t, term,
+		"Uploading pkg-1.0.0.gem - done\nUploading sample.txt - file not found\n",
+		"Error: 1 of 2 uploads failed\n")
 }
 
 // Tests run in the directory of their package

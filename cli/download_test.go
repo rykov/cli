@@ -6,13 +6,13 @@ import (
 	"github.com/gemfury/cli/internal/ctx"
 	"github.com/gemfury/cli/internal/testutil"
 	"github.com/gemfury/cli/pkg/terminal"
+	"github.com/spf13/afero"
 
 	"context"
 	"crypto/sha512"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -133,7 +133,7 @@ func TestDownloadCommandEndpointPath(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "not served by") {
 		t.Fatalf("Expected a refused URL outside the endpoint path, got: %v", err)
 	}
-	expectNoFile(t, "bar-1.2.3.tgz")
+	expectNoFile(t, afero.NewOsFs(), "bar-1.2.3.tgz")
 }
 
 // stalledDownload sends the first half of the file, calls then, and sends
@@ -149,7 +149,7 @@ func stalledDownload(then func()) http.HandlerFunc {
 }
 
 // A download that stalls past --timeout while its file is read fails as
-// a timeout, and leaves no partial file
+// a timeout, and leaves no partial file in the file system of the context
 func TestDownloadCommandTimeout(t *testing.T) {
 	auth := terminal.TestAuther("user", "abc123", nil)
 	term := terminal.NewForTest()
@@ -159,15 +159,13 @@ func TestDownloadCommandTimeout(t *testing.T) {
 		mux.HandleFunc("/downloads/", stalledDownload(func() {}))
 	})
 
-	cc := testContext(t, term, auth, server)
-	t.Chdir(t.TempDir())
+	fsys := afero.NewMemMapFs()
+	cc := withFS(testContext(t, term, auth, server), fsys)
 
 	err := runCommand(cc, []string{"beta", "download", "foo@1.2.3", "--timeout", "50ms"})
 	expectExitStatus(t, term, err, cli.ExitUnavailable)
 	expectErrOutput(t, term, "Error: Operation timed out. Try again later.\n")
-	if _, err := os.Stat("foo-1.2.3.tgz"); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("Expected no file left behind, got %v", err)
-	}
+	expectNoFile(t, fsys, "foo-1.2.3.tgz")
 }
 
 // A download_url on a foreign host is refused rather than sent our token
@@ -191,9 +189,7 @@ func TestDownloadCommandForeignURL(t *testing.T) {
 		t.Fatalf("Expected foreign URL error, got: %v", err)
 	}
 
-	if _, err := os.Stat("foo-1.2.3.tgz"); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("No file should be written for a refused download")
-	}
+	expectNoFile(t, afero.NewOsFs(), "foo-1.2.3.tgz")
 }
 
 // An interrupted download leaves no partial file to fail a later checksum
@@ -219,9 +215,7 @@ func TestDownloadCommandInterrupted(t *testing.T) {
 		t.Errorf("Expected context.Canceled, got: %v", err)
 	}
 
-	if _, err := os.Stat("foo-1.2.3.tgz"); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("No file should be left by an interrupted download")
-	}
+	expectNoFile(t, afero.NewOsFs(), "foo-1.2.3.tgz")
 }
 
 func TestDownloadCommandForbidden(t *testing.T) {
@@ -231,7 +225,24 @@ func TestDownloadCommandForbidden(t *testing.T) {
 
 // ==== beta backup ====
 
+// The backup is written to the file system of the context, the disk or
+// that of a host, which leaves the disk alone
 func TestBackupCommandSuccess(t *testing.T) {
+	t.Run("disk", func(t *testing.T) {
+		testBackupSuccess(t, afero.NewOsFs())
+	})
+
+	t.Run("own file system", func(t *testing.T) {
+		dest := testBackupSuccess(t, afero.NewMemMapFs())
+		expectNoFile(t, afero.NewOsFs(), dest)
+	})
+}
+
+// testBackupSuccess backs up two packages to fsys twice, the second time
+// only to verify their checksums, and returns the destination, which it
+// creates in fsys alone
+func testBackupSuccess(t *testing.T, fsys afero.Fs) string {
+	t.Helper()
 	auth := terminal.TestAuther("user", "abc123", nil)
 	term := terminal.NewForTest()
 
@@ -252,9 +263,12 @@ func TestBackupCommandSuccess(t *testing.T) {
 		})
 	})
 
-	cc := testContext(t, term, auth, server)
+	cc := withFS(testContext(t, term, auth, server), fsys)
 
-	dest := t.TempDir()
+	dest := filepath.Join(t.TempDir(), "backup")
+	if err := fsys.MkdirAll(dest, 0700); err != nil {
+		t.Fatal(err)
+	}
 	if err := runCommandNoErr(cc, []string{"beta", "backup", "--kind", "js", dest}); err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +279,7 @@ func TestBackupCommandSuccess(t *testing.T) {
 		filepath.Join("js", "@scope_bar", "ver_2_bar-0.1.0.tgz"),
 	}
 	for _, rel := range expected {
-		body, err := os.ReadFile(filepath.Join(dest, rel))
+		body, err := afero.ReadFile(fsys, filepath.Join(dest, rel))
 		if err != nil {
 			t.Errorf("Backup file %s: %s", rel, err)
 		} else if string(body) != downloadContent {
@@ -289,6 +303,8 @@ func TestBackupCommandSuccess(t *testing.T) {
 	if outStr := string(term.OutBytes()); strings.Count(outStr, "✅") != 2 {
 		t.Errorf("Expected 2 checksum-verified lines, got %q", outStr)
 	}
+
+	return dest
 }
 
 // A failed download stops the backup, and is about its version
@@ -347,12 +363,12 @@ func TestDownloadCommandChecksumMismatch(t *testing.T) {
 				})
 			}
 
-			t.Chdir(t.TempDir())
-			if err := os.WriteFile("foo-1.2.3.tgz", []byte(staleContent), 0600); err != nil {
+			fsys := afero.NewMemMapFs()
+			if err := afero.WriteFile(fsys, "foo-1.2.3.tgz", []byte(staleContent), 0600); err != nil {
 				t.Fatal(err)
 			}
 
-			cc := testContext(t, term, auth, downloadServer(t))
+			cc := withFS(testContext(t, term, auth, downloadServer(t)), fsys)
 			err := runCommand(cc, args)
 			if (err != nil) != (tc.stderr != "") {
 				t.Errorf("Unexpected command error: %v", err)
@@ -361,7 +377,7 @@ func TestDownloadCommandChecksumMismatch(t *testing.T) {
 			expectErrOutput(t, term, staleWarning+tc.stderr)
 
 			for name, exp := range map[string]string{"foo-1.2.3.tgz": tc.foo, "bar-1.2.3.tgz": tc.bar} {
-				if body, _ := os.ReadFile(name); string(body) != exp {
+				if body, _ := afero.ReadFile(fsys, name); string(body) != exp {
 					t.Errorf("Expected %q in %s, got %q", exp, name, body)
 				}
 			}

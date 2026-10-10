@@ -9,6 +9,7 @@ require (
 	github.com/cheggaaa/pb/v3 v3.2.1
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/manifoldco/promptui v0.9.0
+	github.com/spf13/afero v1.15.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/tomnomnom/linkheader v0.0.0-20250811210735-e5fe3b51442e
@@ -30,4 +31,5 @@ require (
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mattn/go-runewidth v0.0.30 // indirect
 	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.28.0 // indirect
 )

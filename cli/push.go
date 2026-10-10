@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"syscall"
 )
@@ -27,7 +26,7 @@ func NewCmdPush() *cobra.Command {
 		Args: usageArgs(cobra.MinimumNArgs(1), "Please specify at least one package file"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cmd.Context()
-			term := ctx.Terminal(cc)
+			term, fsys := ctx.Terminal(cc), ctx.FS(cc)
 			c, err := newAPIClient(cc)
 			if err != nil {
 				return err
@@ -44,7 +43,7 @@ func NewCmdPush() *cobra.Command {
 				prefix := fmt.Sprintf("Uploading %s ", name)
 
 				err := func() error {
-					file, err := os.Open(path)
+					file, err := fsys.Open(path)
 					if err != nil {
 						return err
 					}

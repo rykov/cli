@@ -4,6 +4,7 @@ import (
 	"github.com/gemfury/cli/api"
 	"github.com/gemfury/cli/internal/ctx"
 	"github.com/gemfury/cli/pkg/terminal"
+	"github.com/spf13/afero"
 	"github.com/spf13/cobra"
 
 	"context"
@@ -112,9 +113,11 @@ func NewCmdBackup() *cobra.Command {
 }
 
 func backupEverything(cmd *cobra.Command, args []string, kindFlag string) error {
+	cc := cmd.Context()
+
 	// Verify destination directory
 	destDir := filepath.Clean(args[0])
-	if s, err := os.Stat(destDir); errors.Is(err, fs.ErrNotExist) {
+	if s, err := ctx.FS(cc).Stat(destDir); errors.Is(err, fs.ErrNotExist) {
 		return errors.New("This directory doesn't exist")
 	} else if err != nil {
 		return err
@@ -123,7 +126,6 @@ func backupEverything(cmd *cobra.Command, args []string, kindFlag string) error 
 	}
 
 	// Fire up the API
-	cc := cmd.Context()
 	c, err := newAPIClient(cc)
 	if err != nil {
 		return err
@@ -161,7 +163,7 @@ func backupVersion(cc context.Context, client *api.Client, v *api.VersionFile, d
 
 func downloadVersion(cc context.Context, client *api.Client, v *api.VersionFile, destDir, subPath string) error {
 	slash := string(filepath.Separator)
-	term := ctx.Terminal(cc)
+	term, fsys := ctx.Terminal(cc), ctx.FS(cc)
 
 	path := filepath.Clean(filepath.Join(destDir, subPath))
 	pkgDir := filepath.Dir(path)
@@ -172,8 +174,8 @@ func downloadVersion(cc context.Context, client *api.Client, v *api.VersionFile,
 	}
 
 	// Verify or create package directory
-	if s, err := os.Stat(pkgDir); errors.Is(err, fs.ErrNotExist) {
-		if err := os.MkdirAll(pkgDir, 0700); err != nil {
+	if s, err := fsys.Stat(pkgDir); errors.Is(err, fs.ErrNotExist) {
+		if err := fsys.MkdirAll(pkgDir, 0700); err != nil {
 			return err
 		}
 	} else if err != nil {
@@ -183,7 +185,7 @@ func downloadVersion(cc context.Context, client *api.Client, v *api.VersionFile,
 	}
 
 	// Check if file exists, and validate checksum
-	if err := backupCheckPath(term, v, path, status); errors.Is(err, backupSkip) {
+	if err := backupCheckPath(term, fsys, v, path, status); errors.Is(err, backupSkip) {
 		return nil // Checksum match => skip download
 	} else if err != nil {
 		return err
@@ -198,7 +200,7 @@ func downloadVersion(cc context.Context, client *api.Client, v *api.VersionFile,
 	defer body.Close()
 
 	// Open file for writing. It must not exist, otherwise fail
-	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
+	file, err := fsys.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return err
 	}
@@ -217,7 +219,7 @@ func downloadVersion(cc context.Context, client *api.Client, v *api.VersionFile,
 		err = closeErr
 	}
 	if err != nil {
-		os.Remove(path)
+		fsys.Remove(path)
 		return err
 	}
 
@@ -226,9 +228,9 @@ func downloadVersion(cc context.Context, client *api.Client, v *api.VersionFile,
 }
 
 // Validate checksum for file
-func backupCheckPath(term terminal.Terminal, v *api.VersionFile, path string, status func(string) string) error {
+func backupCheckPath(term terminal.Terminal, fsys afero.Fs, v *api.VersionFile, path string, status func(string) string) error {
 	// Check if file exists, and validate checksum if it does
-	if s, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+	if s, err := fsys.Stat(path); errors.Is(err, fs.ErrNotExist) {
 		return nil
 	} else if err != nil {
 		return err
@@ -241,7 +243,7 @@ func backupCheckPath(term terminal.Terminal, v *api.VersionFile, path string, st
 		return backupSkip // API should always have digests (theoretically)
 	}
 
-	file, err := os.Open(path)
+	file, err := fsys.Open(path)
 	if err != nil {
 		return err
 	}
@@ -260,7 +262,7 @@ func backupCheckPath(term terminal.Terminal, v *api.VersionFile, path string, st
 			return err
 		} else if ok {
 			file.Close()
-			os.Remove(path)
+			fsys.Remove(path)
 			return nil
 		}
 
