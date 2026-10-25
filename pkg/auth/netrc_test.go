@@ -1,4 +1,4 @@
-package terminal
+package auth
 
 import (
 	"errors"
@@ -60,16 +60,14 @@ var processNetrc = newNetrc(os.Getenv)
 // ownNetrc is a terminal whose environment, env with NETRC, names a .netrc
 // of its own, apart from that of the process, which useNetrc has set.
 // Both paths are returned, to tell the two files apart.
-func ownNetrc(t *testing.T, env map[string]string) (term *testTerm, path, processPath string) {
+func ownNetrc(t *testing.T, env map[string]string) (term *fakeTerminal, path, processPath string) {
 	t.Helper()
 	processPath = useNetrc(t, "")
 	path = filepath.Join(t.TempDir(), "netrc")
 
 	own := map[string]string{"NETRC": path}
 	maps.Copy(own, env)
-	term = NewForTest()
-	term.SetEnv(own)
-	return term, path, processPath
+	return &fakeTerminal{env: own}, path, processPath
 }
 
 // writeNetrc writes a file that others can read, whatever the umask, which
@@ -92,7 +90,7 @@ func setDuring[T any](t *testing.T, v *T, to T) {
 }
 
 // saveSession saves the session of furyEntry, which is then the one read
-func saveSession(t *testing.T, auth Auther) {
+func saveSession(t *testing.T, auth Store) {
 	t.Helper()
 	if err := auth.Append("u@example.com", "abc123"); err != nil {
 		t.Fatal(err)
@@ -101,7 +99,7 @@ func saveSession(t *testing.T, auth Auther) {
 }
 
 // wipeSession wipes the session, after which none is read
-func wipeSession(t *testing.T, auth Auther) {
+func wipeSession(t *testing.T, auth Store) {
 	t.Helper()
 	if err := auth.Wipe(); err != nil {
 		t.Fatal(err)
@@ -110,7 +108,7 @@ func wipeSession(t *testing.T, auth Auther) {
 }
 
 // expectAuth asserts what credentials are saved, both empty for none
-func expectAuth(t *testing.T, auth Auther, user, pass string) {
+func expectAuth(t *testing.T, auth Store, user, pass string) {
 	t.Helper()
 	if u, p, err := auth.Auth(); err != nil {
 		t.Errorf("Auth error: %s", err)

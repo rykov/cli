@@ -4,6 +4,7 @@ import (
 	"github.com/gemfury/cli/cli"
 	"github.com/gemfury/cli/internal/ctx"
 	"github.com/gemfury/cli/internal/testutil"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
 	"github.com/spf13/afero"
 
@@ -12,7 +13,7 @@ import (
 	"testing"
 )
 
-// A host runs a command for a session with the terminal, the auther, and
+// A host runs a command for a session with the terminal, the store, and
 // the file system of that session, and nothing of its own process
 func TestHostSession(t *testing.T) {
 	t.Setenv("FURY_TOKEN", "process-token")
@@ -37,7 +38,7 @@ func TestHostSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cc := cli.NewContext(t.Context(), term, terminal.TestAuther("user", "host-token", nil), fsys)
+	cc := cli.NewContext(t.Context(), term, auth.NewMemory("user", "host-token", nil), fsys)
 	flags := ctx.GlobalFlags(cc)
 	flags.Endpoint, flags.PushEndpoint = server.URL, server.URL
 
@@ -48,7 +49,7 @@ func TestHostSession(t *testing.T) {
 	}
 
 	if token != "host-token" || account != "session-org" {
-		t.Errorf("Expected the token of the auther and the account of the session, got %q and %q", token, account)
+		t.Errorf("Expected the token of the store and the account of the session, got %q and %q", token, account)
 	}
 	if exp := "Uploading pkg-1.0.0.gem - done\n"; out.String() != exp || errOut.Len() != 0 {
 		t.Errorf("Expected %q on the output of the session and nothing else, got %q and %q", exp, out.String(), errOut.String())

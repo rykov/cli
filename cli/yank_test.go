@@ -5,6 +5,7 @@ import (
 	"github.com/gemfury/cli/cli"
 	"github.com/gemfury/cli/internal/ctx"
 	"github.com/gemfury/cli/internal/testutil"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
 
 	"context"
@@ -20,7 +21,7 @@ import (
 const yankConfirm = "Are you sure you want to delete these files? [y/N]"
 
 func TestYankCommandOnePackage(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	// Fire up test server
@@ -45,7 +46,7 @@ func TestYankCommandOnePackage(t *testing.T) {
 		})
 	})
 
-	cc := cli.TestContext(t.Context(), term, auth)
+	cc := cli.TestContext(t.Context(), term, store)
 	flags := ctx.GlobalFlags(cc)
 	flags.Endpoint = server.URL
 
@@ -79,7 +80,7 @@ func TestYankCommandOnePackage(t *testing.T) {
 }
 
 func TestYankCommandMultiPackage(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	// Fire up test server
@@ -106,7 +107,7 @@ func TestYankCommandMultiPackage(t *testing.T) {
 		})
 	})
 
-	cc := cli.TestContext(t.Context(), term, auth)
+	cc := cli.TestContext(t.Context(), term, store)
 	flags := ctx.GlobalFlags(cc)
 	flags.Endpoint = server.URL
 
@@ -155,7 +156,7 @@ func TestYankCommandMultiPackage(t *testing.T) {
 func TestYankCommandUnconfirmed(t *testing.T) {
 	for answer, interrupted := range unconfirmed {
 		t.Run(answer, func(t *testing.T) {
-			auth := terminal.TestAuther("user", "abc123", nil)
+			store := auth.NewMemory("user", "abc123", nil)
 			term := terminal.NewForTest()
 
 			server := testutil.APIServerCustom(t, func(mux *http.ServeMux) {
@@ -171,7 +172,7 @@ func TestYankCommandUnconfirmed(t *testing.T) {
 				yankConfirm: answer,
 			})
 
-			cc := testContext(t, term, auth, server)
+			cc := testContext(t, term, store, server)
 			err := runCommand(cc, []string{"yank", "foo@0.0.1"})
 			expectUnconfirmed(t, term, err, interrupted)
 		})
@@ -180,10 +181,10 @@ func TestYankCommandUnconfirmed(t *testing.T) {
 
 // Interrupted while removing the first of two versions
 func TestYankCommandInterrupted(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
-	cc, cancel := context.WithCancel(cli.TestContext(t.Context(), term, auth))
+	cc, cancel := context.WithCancel(cli.TestContext(t.Context(), term, store))
 	defer cancel()
 
 	var removals atomic.Int32
@@ -217,12 +218,12 @@ func TestYankCommandForbidden(t *testing.T) {
 // Versions that cannot be looked up: each is reported, then summarized.
 // The version follows the last "@", as the name of a package may have one.
 func TestYankCommandLookupFailures(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	server := testutil.APIServer(t, "GET", "/versions", "", 404)
 
-	cc := testContext(t, term, auth, server)
+	cc := testContext(t, term, store, server)
 	err := runCommand(cc, []string{"yank", "foo@1.0", "@scope/bar@1.0", "--force"})
 	expectSummaryError(t, err, api.ErrNotFound, "2 of 2 lookups failed")
 	expectOutput(t, term, "", ""+
@@ -248,7 +249,7 @@ func TestYankCommandSingleFailure(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			auth := terminal.TestAuther("user", "abc123", nil)
+			store := auth.NewMemory("user", "abc123", nil)
 			term := terminal.NewForTest()
 
 			server := testutil.APIServerCustom(t, func(mux *http.ServeMux) {
@@ -256,7 +257,7 @@ func TestYankCommandSingleFailure(t *testing.T) {
 				mux.HandleFunc("DELETE /packages/{pid}/versions/{vid}", respondWith(404, ""))
 			})
 
-			cc := testContext(t, term, auth, server)
+			cc := testContext(t, term, store, server)
 			err := runCommand(cc, []string{"yank", "js:foo@0.0.1", "--force"})
 			expectExitStatus(t, term, err, cli.ExitNotFound)
 			expectOutput(t, term, "", "Error: "+tc.message+"\n")
@@ -266,7 +267,7 @@ func TestYankCommandSingleFailure(t *testing.T) {
 
 // One of two matched versions cannot be removed: the other still is
 func TestYankCommandPartialRemovalFailure(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	server := testutil.APIServerCustom(t, func(mux *http.ServeMux) {
@@ -282,7 +283,7 @@ func TestYankCommandPartialRemovalFailure(t *testing.T) {
 		})
 	})
 
-	cc := testContext(t, term, auth, server)
+	cc := testContext(t, term, store, server)
 	err := runCommand(cc, []string{"yank", "foo@0.0.1", "--force"})
 	expectSummaryError(t, err, api.ErrNotFound, "1 of 2 removals failed")
 

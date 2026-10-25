@@ -3,6 +3,7 @@ package cli_test
 import (
 	"github.com/gemfury/cli/api"
 	"github.com/gemfury/cli/internal/testutil"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
 
 	"errors"
@@ -26,10 +27,10 @@ func TestNoProgress(t *testing.T) {
 	} {
 		for flag, asked := range map[string]int{"": 1, "--no-progress": 0, "--quiet": 0} {
 			t.Run(name+" "+flag, func(t *testing.T) {
-				auth := terminal.TestAuther("user", "abc123", nil)
+				store := auth.NewMemory("user", "abc123", nil)
 				term := terminal.NewForTest()
 
-				cc := testContext(t, term, auth, tc.server(t))
+				cc := testContext(t, term, store, tc.server(t))
 				if err := runCommand(cc, append(tc.args, strings.Fields(flag)...)); err != nil {
 					t.Fatal(err)
 				}
@@ -57,10 +58,10 @@ func TestQuietListing(t *testing.T) {
 			tc := jsonCases[name]
 			server := tc.server(t)
 			output := func(flags ...string) string {
-				auth := terminal.TestAuther("user", "abc123", nil)
+				store := auth.NewMemory("user", "abc123", nil)
 				term := terminal.NewForTest()
 
-				cc := testContext(t, term, auth, server)
+				cc := testContext(t, term, store, server)
 				if err := runCommandNoErr(cc, slices.Concat(flags, strings.Fields(name), tc.args)); err != nil {
 					t.Fatal(err)
 				}
@@ -103,11 +104,11 @@ func TestQuietCommand(t *testing.T) {
 		"whoami":         {[]string{"whoami"}, "GET", "/users/me", whoamiResponse, "You are logged in as \"joetest\"\n"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			auth := terminal.TestAuther("user", "abc123", nil)
+			store := auth.NewMemory("user", "abc123", nil)
 			term := terminal.NewForTest()
 
 			server := testutil.APIServer(t, tc.method, tc.path, tc.body, 200)
-			cc := testContext(t, term, auth, server)
+			cc := testContext(t, term, store, server)
 			if err := runCommand(cc, append(tc.args, "--quiet")); err != nil {
 				t.Fatal(err)
 			}
@@ -134,10 +135,10 @@ func TestQuietFailure(t *testing.T) {
 		"push two files": {[]string{"push", file, file}, failingUploadServer, api.ErrFuryServer, problem + problem + "Error: 2 of 2 uploads failed\n"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			auth := terminal.TestAuther("user", "abc123", nil)
+			store := auth.NewMemory("user", "abc123", nil)
 			term := terminal.NewForTest()
 
-			cc := testContext(t, term, auth, tc.server(t))
+			cc := testContext(t, term, store, tc.server(t))
 			if err := runCommand(cc, append(tc.args, "-q")); !errors.Is(err, tc.cause) {
 				t.Errorf("Expected %v within error, got: %v", tc.cause, err)
 			}
@@ -157,14 +158,14 @@ func TestQuietYank(t *testing.T) {
 		"--force": {[]string{"yank", "foo@1.2.3", "--quiet", "--force"}, false},
 	} {
 		t.Run(name, func(t *testing.T) {
-			auth := terminal.TestAuther("user", "abc123", nil)
+			store := auth.NewMemory("user", "abc123", nil)
 			term := terminal.NewForTest()
 			term.SetPromptResponses(map[string]string{
 				yankConfirm: "y",
 			})
 
 			var removals atomic.Int32
-			cc := testContext(t, term, auth, mutableServer(t, &removals))
+			cc := testContext(t, term, store, mutableServer(t, &removals))
 			if err := runCommandNoErr(cc, tc.args); err != nil {
 				t.Fatal(err)
 			}
@@ -192,7 +193,7 @@ func TestQuietDownload(t *testing.T) {
 		"stale":   {staleContent, staleWarning},
 	} {
 		t.Run(name, func(t *testing.T) {
-			auth := terminal.TestAuther("user", "abc123", nil)
+			store := auth.NewMemory("user", "abc123", nil)
 			term := terminal.NewForTest()
 
 			t.Chdir(t.TempDir())
@@ -202,7 +203,7 @@ func TestQuietDownload(t *testing.T) {
 				}
 			}
 
-			cc := testContext(t, term, auth, downloadServer(t))
+			cc := testContext(t, term, store, downloadServer(t))
 			args := []string{"beta", "download", "foo@1.2.3", "--quiet", "--yes"}
 			if err := runCommand(cc, args); err != nil {
 				t.Fatal(err)

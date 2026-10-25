@@ -4,6 +4,7 @@ import (
 	"github.com/gemfury/cli/cli"
 	"github.com/gemfury/cli/internal/ctx"
 	"github.com/gemfury/cli/internal/testutil"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
 
 	"net/http"
@@ -28,13 +29,13 @@ const (
 // ==== GIT STACK ====
 
 func TestGitStackCommandSuccess(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	// Fire up test server with both repo info and stack listing
 	server := testGitStackServer(t)
 
-	cc := cli.TestContext(t.Context(), term, auth)
+	cc := cli.TestContext(t.Context(), term, store)
 	flags := ctx.GlobalFlags(cc)
 	flags.Endpoint = server.URL
 
@@ -76,13 +77,13 @@ func testGitStackServer(t *testing.T) *httptest.Server {
 // ==== GIT STACK SET ====
 
 func TestGitStackSetCommandSuccess(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	// Fire up test server
 	server := testutil.APIServer(t, "PATCH", gitRepoPath, "{}", 200)
 
-	cc := cli.TestContext(t.Context(), term, auth)
+	cc := cli.TestContext(t.Context(), term, store)
 	flags := ctx.GlobalFlags(cc)
 	flags.Endpoint = server.URL
 

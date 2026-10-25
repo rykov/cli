@@ -2,7 +2,7 @@ package cli
 
 import (
 	"github.com/gemfury/cli/internal/ctx"
-	"github.com/gemfury/cli/pkg/terminal"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/spf13/cobra"
 
 	"bufio"
@@ -39,12 +39,12 @@ system keychain. The operation is "get": any other is ignored.`,
 
 			// Other hosts are not ours to answer for
 			asked := readGitCredential(ctx.Terminal(cc).IOIn())
-			if asked["protocol"] != "https" || asked["host"] != terminal.GitHost {
+			if asked["protocol"] != "https" || asked["host"] != auth.GitHost {
 				return nil
 			}
 
 			// Without a session, Git is left to ask for the credentials
-			user, token, err := ctx.Auther(cc).Auth()
+			user, token, err := ctx.Auth(cc).Auth()
 			if err != nil || token == "" {
 				return err
 			}
@@ -54,7 +54,7 @@ system keychain. The operation is "get": any other is ignored.`,
 				return nil
 			}
 
-			ctx.Terminal(cc).Printf("protocol=https\nhost=%s\nusername=%s\npassword=%s\n", terminal.GitHost, user, token)
+			ctx.Terminal(cc).Printf("protocol=https\nhost=%s\nusername=%s\npassword=%s\n", auth.GitHost, user, token)
 			return nil
 		},
 	}

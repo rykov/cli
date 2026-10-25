@@ -20,7 +20,7 @@ func NewCmdLogout() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cmd.Context()
 			term := ctx.Terminal(cc)
-			auth := ctx.Auther(cc)
+			store := ctx.Auth(cc)
 
 			// --api-token is rejected rather than ignored, as it would seem to
 			// name the token to revoke; FURY_TOKEN is ignored, as it is set
@@ -29,7 +29,7 @@ func NewCmdLogout() *cobra.Command {
 				return usageErrorf("Logout clears saved credentials only; do not pass --api-token")
 			}
 
-			_, token, err := auth.Auth()
+			_, token, err := store.Auth()
 			if err != nil {
 				return err
 			} else if token == "" {
@@ -77,14 +77,14 @@ func logoutCurrent(cc context.Context, token string, onFailConfirm string) error
 		}
 	}
 
-	return ctx.Auther(cc).Wipe()
+	return ctx.Auth(cc).Wipe()
 }
 
 // logoutSaved revokes and clears the session saved before, if any, asking
 // whether to go on when the server refuses. When the saved token is keep,
 // it is left alone, as keep is to stay valid
 func logoutSaved(cc context.Context, keep string) error {
-	if _, token, err := ctx.Auther(cc).Auth(); err == nil && token != "" && token != keep {
+	if _, token, err := ctx.Auth(cc).Auth(); err == nil && token != "" && token != keep {
 		confirm := "Do you want to ignore & continue with your login? [y/N]"
 		return logoutCurrent(cc, token, confirm)
 	}

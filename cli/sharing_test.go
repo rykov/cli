@@ -5,6 +5,7 @@ import (
 	"github.com/gemfury/cli/cli"
 	"github.com/gemfury/cli/internal/ctx"
 	"github.com/gemfury/cli/internal/testutil"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
 
 	"net/http"
@@ -27,14 +28,14 @@ var sharingResponses = []string{`[{
 // ==== sharing ====
 
 func TestSharingCommandSuccess(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	// Fire up test server
 	path := "/members"
 	server := testutil.APIServerPaginated(t, "GET", path, sharingResponses, 200)
 
-	cc := cli.TestContext(t.Context(), term, auth)
+	cc := cli.TestContext(t.Context(), term, store)
 	flags := ctx.GlobalFlags(cc)
 	flags.Endpoint = server.URL
 
@@ -62,14 +63,14 @@ func TestSharingCommandForbidden(t *testing.T) {
 // ==== sharing add ====
 
 func TestSharingAddCommandSuccess(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	// Fire up test server
 	path := "/collaborators/added@example.com"
 	server := testutil.APIServer(t, "PUT", path, "{}", 200)
 
-	cc := cli.TestContext(t.Context(), term, auth)
+	cc := cli.TestContext(t.Context(), term, store)
 	flags := ctx.GlobalFlags(cc)
 	flags.Endpoint = server.URL
 
@@ -85,7 +86,7 @@ func TestSharingAddCommandSuccess(t *testing.T) {
 }
 
 func TestSharingAddWithRoleCommandSuccess(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	// Fire up test server
@@ -101,7 +102,7 @@ func TestSharingAddWithRoleCommandSuccess(t *testing.T) {
 		})
 	})
 
-	cc := cli.TestContext(t.Context(), term, auth)
+	cc := cli.TestContext(t.Context(), term, store)
 	flags := ctx.GlobalFlags(cc)
 	flags.Endpoint = server.URL
 
@@ -134,7 +135,7 @@ func TestSharingAddForbidden(t *testing.T) {
 
 // One of three invitations fails: the other two still go through
 func TestSharingAddCommandPartialFailure(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	server := testutil.APIServerCustom(t, func(mux *http.ServeMux) {
@@ -147,7 +148,7 @@ func TestSharingAddCommandPartialFailure(t *testing.T) {
 		})
 	})
 
-	cc := testContext(t, term, auth, server)
+	cc := testContext(t, term, store, server)
 	args := []string{"sharing", "add", "ok@example.com", "nobody@example.com", "fine@example.com"}
 	expectSummaryError(t, runCommand(cc, args), api.ErrNotFound, "1 of 3 invitations failed")
 
@@ -161,14 +162,14 @@ func TestSharingAddCommandPartialFailure(t *testing.T) {
 // ==== sharing remove ====
 
 func TestSharingRemoveCommandSuccess(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	// Fire up test server
 	path := "/collaborators/fired@example.com"
 	server := testutil.APIServer(t, "DELETE", path, "{}", 200)
 
-	cc := cli.TestContext(t.Context(), term, auth)
+	cc := cli.TestContext(t.Context(), term, store)
 	flags := ctx.GlobalFlags(cc)
 	flags.Endpoint = server.URL
 
@@ -212,14 +213,14 @@ var accountsResponses = []string{`[{
 }]`}
 
 func TestAccountsCommandSuccess(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	// Fire up test server
 	path := "/collaborations"
 	server := testutil.APIServerPaginated(t, "GET", path, accountsResponses, 200)
 
-	cc := cli.TestContext(t.Context(), term, auth)
+	cc := cli.TestContext(t.Context(), term, store)
 	flags := ctx.GlobalFlags(cc)
 	flags.Endpoint = server.URL
 

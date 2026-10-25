@@ -1,4 +1,4 @@
-package terminal
+package auth
 
 import (
 	"github.com/zalando/go-keyring"
@@ -98,7 +98,7 @@ func testStore(ring *fakeRing) (*credStore, *fakeGit) {
 		ring:      ring,
 		git:       git,
 		reachable: func() bool { return true },
-		timeout:   timeout,
+		timeout:   func() time.Duration { return timeout },
 	}, git
 }
 
@@ -424,7 +424,7 @@ func TestCredentialStoreWipeUnanswered(t *testing.T) {
 			expectAuth(t, store, "u@example.com", "abc123")
 
 			fail(ring)
-			store.timeout = hangTimeout
+			store.timeout = func() time.Duration { return hangTimeout }
 			if err := store.Wipe(); err == nil {
 				t.Error("Expected an error")
 			}
@@ -441,7 +441,7 @@ func TestCredentialStoreWaiting(t *testing.T) {
 
 	// The keychain answers once its user is told of the wait
 	told := 0
-	store.notice, store.timeout = time.Millisecond, 5*time.Second
+	store.notice, store.timeout = time.Millisecond, func() time.Duration { return 5 * time.Second }
 	store.waiting = func() {
 		told++
 		close(ring.gate)
@@ -450,7 +450,7 @@ func TestCredentialStoreWaiting(t *testing.T) {
 	expectAuth(t, store, "u@example.com", "abc123")
 
 	// Slow again, it is waited for without a word, and given up on
-	ring.gate, store.timeout = make(chan struct{}), hangTimeout
+	ring.gate, store.timeout = make(chan struct{}), func() time.Duration { return hangTimeout }
 	if err := store.Wipe(); err == nil {
 		t.Error("Expected an error")
 	}
@@ -472,29 +472,29 @@ func TestCredentialStoreTimeout(t *testing.T) {
 }
 
 // With no one at the terminal, there is no one to unlock the keychain, and
-// less time for it to answer. Either way, a wait that gets long is told of
-// on stderr, as a warning is.
+// less time for it to answer. That is asked of the terminal at each wait,
+// rather than once when the store is made. Either way, a wait that gets long
+// is told of on stderr, as a warning is.
 func TestCredentialStoreTimeoutByTerminal(t *testing.T) {
+	term := &fakeTerminal{}
+	store := New(term).(*credStore)
+
 	for interactive, exp := range map[bool]time.Duration{
 		true:  keyringTimeout,
 		false: keyringUnattendedTimeout,
 	} {
-		term := NewForTest()
-		term.SetInteractive(interactive)
-
-		store := CredentialStore(term).(*credStore)
-		if store.timeout != exp {
-			t.Errorf("Expected %s for interactive=%v, got %s", exp, interactive, store.timeout)
-		} else if store.notice != keyringNotice {
-			t.Errorf("Expected the wait to be told of after %s, got %s", keyringNotice, store.notice)
+		term.interactive = interactive
+		if got := store.timeout(); got != exp {
+			t.Errorf("Expected %s for interactive=%v, got %s", exp, interactive, got)
 		}
+	}
 
-		store.waiting()
-		if msg, got := "Waiting for the system keychain ...\n", string(term.ErrBytes()); got != msg {
-			t.Errorf("Expected %q on stderr, got %q", msg, got)
-		} else if out := term.OutBytes(); len(out) != 0 {
-			t.Errorf("Expected nothing on stdout, got %q", out)
-		}
+	if store.notice != keyringNotice {
+		t.Errorf("Expected the wait to be told of after %s, got %s", keyringNotice, store.notice)
+	}
+	store.waiting()
+	if msg, got := "Waiting for the system keychain ...\n", term.err.String(); got != msg {
+		t.Errorf("Expected %q on stderr, got %q", msg, got)
 	}
 }
 
@@ -535,7 +535,7 @@ func TestCredentialStoreEnvironment(t *testing.T) {
 
 	// The store of the terminal, with fakes for the system keychain
 	// and the configuration of Git
-	store := CredentialStore(term).(*credStore)
+	store := New(term).(*credStore)
 	ring, git := &fakeRing{}, &fakeGit{}
 	store.ring, store.git = ring, git
 

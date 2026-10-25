@@ -3,6 +3,7 @@ package cli_test
 import (
 	"github.com/gemfury/cli/cli"
 	"github.com/gemfury/cli/internal/testutil"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
 
 	"bytes"
@@ -209,10 +210,10 @@ var jsonOutputs = map[string]string{
 // exactly stdout, and stderr nothing
 func expectJSON(t *testing.T, name string, tc jsonCase, stdout string, flags ...string) {
 	t.Helper()
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
-	cc := testContext(t, term, auth, tc.server(t))
+	cc := testContext(t, term, store, tc.server(t))
 	args := slices.Concat(strings.Fields(name), tc.args, flags, []string{"--json"})
 	if err := runCommand(cc, args); err != nil {
 		t.Fatal(err)
@@ -289,10 +290,10 @@ func TestJSONFailure(t *testing.T) {
 		"logged out":  {"whoami", "", offlineServer, cli.ErrNotLoggedIn.Error(), cli.ExitAuth},
 	} {
 		t.Run(name, func(t *testing.T) {
-			auth := terminal.TestAuther("", tc.token, nil)
+			store := auth.NewMemory("", tc.token, nil)
 			term := terminal.NewForTest()
 
-			cc := testContext(t, term, auth, tc.server(t))
+			cc := testContext(t, term, store, tc.server(t))
 			err := runCommand(cc, append(strings.Fields(tc.command), "--json"))
 			expectExitStatus(t, term, err, tc.exp)
 			expectOutput(t, term, "", "Error: "+tc.msg+"\n")
@@ -341,7 +342,7 @@ func TestJSONApprovedFields(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			term := terminal.NewForTest()
-			cc := testContext(t, term, terminal.TestAuther("user", "abc123", nil), serving("GET", tc.path, 200, tc.body)(t))
+			cc := testContext(t, term, auth.NewMemory("user", "abc123", nil), serving("GET", tc.path, 200, tc.body)(t))
 			if err := runCommand(cc, append(strings.Fields(tc.command), "--json")); err != nil {
 				t.Fatal(err)
 			}

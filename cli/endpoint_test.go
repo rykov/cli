@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"github.com/gemfury/cli/internal/testutil"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
 
 	"fmt"
@@ -78,7 +79,7 @@ func TestEndpointFieldOverEnv(t *testing.T) {
 	term.SetEnv(map[string]string{"FURY_API_URL": offlineServer(t).URL})
 
 	server := testutil.APIServer(t, "GET", "/packages", "[]", 200)
-	cc := testContext(t, term, terminal.TestAuther("user", "abc123", nil), server)
+	cc := testContext(t, term, auth.NewMemory("user", "abc123", nil), server)
 	if err := runCommandNoErr(cc, []string{"packages"}); err != nil {
 		t.Fatal(err)
 	}

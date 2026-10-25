@@ -5,6 +5,7 @@ import (
 	"github.com/gemfury/cli/cli"
 	"github.com/gemfury/cli/internal/ctx"
 	"github.com/gemfury/cli/internal/testutil"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
 	"github.com/spf13/afero"
 	"github.com/spf13/cobra"
@@ -60,7 +61,7 @@ func TestRootIgnoresProcessArgs(t *testing.T) {
 	t.Cleanup(func() { os.Args = args })
 
 	term := terminal.NewForTest()
-	cc := testContext(t, term, terminal.TestAuther("", "", nil), offlineServer(t))
+	cc := testContext(t, term, auth.NewMemory("", "", nil), offlineServer(t))
 	if err := cli.Execute(cc, cli.NewRootCommand(cc)); err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +117,7 @@ func runCommandNoErr(cc context.Context, args []string) error {
 // It has no credentials, and any API request fails the test.
 func helpOutput(t *testing.T, args ...string) string {
 	t.Helper()
-	cc := testContext(t, terminal.NewForTest(), terminal.TestAuther("", "", nil), offlineServer(t))
+	cc := testContext(t, terminal.NewForTest(), auth.NewMemory("", "", nil), offlineServer(t))
 	return helpOutputIn(t, cc, args...)
 }
 
@@ -142,7 +143,7 @@ func serving(method, path string, code int, pages ...string) func(*testing.T) *h
 // credentials and no API
 func rootForTest(t *testing.T) *cobra.Command {
 	t.Helper()
-	cc := cli.TestContext(t.Context(), terminal.NewForTest(), terminal.TestAuther("", "", nil))
+	cc := cli.TestContext(t.Context(), terminal.NewForTest(), auth.NewMemory("", "", nil))
 	return cli.NewRootCommand(cc)
 }
 
@@ -156,9 +157,9 @@ func allCommands(cmd *cobra.Command) []*cobra.Command {
 }
 
 // testContext builds a command context with both API endpoints pointed at server
-func testContext(t *testing.T, term terminal.Terminal, auth terminal.Auther, server *httptest.Server) context.Context {
+func testContext(t *testing.T, term terminal.Terminal, store auth.Store, server *httptest.Server) context.Context {
 	t.Helper()
-	cc := cli.TestContext(t.Context(), term, auth)
+	cc := cli.TestContext(t.Context(), term, store)
 
 	flags := ctx.GlobalFlags(cc)
 	flags.PushEndpoint = server.URL
@@ -173,7 +174,7 @@ func envContext(t *testing.T, env map[string]string) context.Context {
 	t.Helper()
 	term := terminal.NewForTest()
 	term.SetEnv(env)
-	return cli.TestContext(t.Context(), term, terminal.TestAuther("user", "abc123", nil))
+	return cli.TestContext(t.Context(), term, auth.NewMemory("user", "abc123", nil))
 }
 
 // withFS replaces the file system of a command context, such as one of
@@ -239,9 +240,9 @@ func expectExitStatus(t *testing.T, term terminal.TestTerm, err error, exp int) 
 }
 
 // expectCredentials asserts what credentials are saved, both empty for none
-func expectCredentials(t *testing.T, auth terminal.Auther, user, token string) {
+func expectCredentials(t *testing.T, store auth.Store, user, token string) {
 	t.Helper()
-	if u, p, _ := auth.Auth(); u != user || p != token {
+	if u, p, _ := store.Auth(); u != user || p != token {
 		t.Errorf("Expected saved credentials %q/%q, got %q/%q", user, token, u, p)
 	}
 }
@@ -289,17 +290,17 @@ func respondWith(status int, body string) http.HandlerFunc {
 	}
 }
 
-// unusedAuther fails any command that consults the saved credentials
-func unusedAuther() terminal.Auther {
-	return terminal.TestAuther("", "", errors.New("TestAuther should not be called"))
+// unusedStore fails any command that consults the saved credentials
+func unusedStore() auth.Store {
+	return auth.NewMemory("", "", errors.New("the store should not be consulted"))
 }
 
 // We first test with manual (prompt) login, and then test with "--api-token" flag
 func testCommandLoginPreCheck(t *testing.T, args []string, server *httptest.Server) {
 	t.Helper()
-	auth := terminal.TestAuther("", "", nil)
+	store := auth.NewMemory("", "", nil)
 	term := terminal.NewForTest()
-	cc := testContext(t, term, auth, server)
+	cc := testContext(t, term, store, server)
 
 	// Prepare for browser login prompt
 	term.InWrite([]byte("!"))
@@ -308,7 +309,7 @@ func testCommandLoginPreCheck(t *testing.T, args []string, server *httptest.Serv
 		t.Errorf("Command error: %s", err)
 	}
 
-	if u, p, err := auth.Auth(); err != nil {
+	if u, p, err := store.Auth(); err != nil {
 		t.Errorf("Login error: %s", err)
 	} else if exp := "u@example.com"; u != exp {
 		t.Errorf("Expected user %q, got %q", exp, u)
@@ -316,8 +317,8 @@ func testCommandLoginPreCheck(t *testing.T, args []string, server *httptest.Serv
 		t.Errorf("Expected pass %q, got %q", exp, p)
 	}
 
-	// Testing with "--api-token" should skip calling Auth() on TestAuther
-	cc = testContext(t, term, unusedAuther(), server)
+	// Testing with "--api-token" should skip consulting the store
+	cc = testContext(t, term, unusedStore(), server)
 
 	args = append(args, "--api-token", "abc123")
 	if err := runCommand(cc, args); err != nil {
@@ -329,9 +330,9 @@ func testCommandLoginPreCheck(t *testing.T, args []string, server *httptest.Serv
 // what it asked for, e.g. `Package "foo"`, or about nothing when empty
 func testCommandForbiddenResponse(t *testing.T, args []string, server *httptest.Server, about string) {
 	t.Helper()
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
-	cc := testContext(t, term, auth, server)
+	cc := testContext(t, term, store, server)
 
 	err := runCommand(cc, args)
 	if !errors.Is(err, api.ErrForbidden) {
@@ -400,7 +401,7 @@ func expectUsageError(t *testing.T, args []string, msg string) {
 // expectUsageErrorAt is expectUsageError at the given terminal
 func expectUsageErrorAt(t *testing.T, term terminal.TestTerm, args []string, msg string) {
 	t.Helper()
-	cc := testContext(t, term, terminal.TestAuther("", "", nil), offlineServer(t))
+	cc := testContext(t, term, auth.NewMemory("", "", nil), offlineServer(t))
 	expectUsageErrorIn(t, cc, args, msg)
 }
 
@@ -435,7 +436,7 @@ func TestUnknownCommandOutput(t *testing.T) {
 	server := offlineServer(t)
 
 	term := terminal.NewForTest()
-	cc := testContext(t, term, terminal.TestAuther("", "", nil), server)
+	cc := testContext(t, term, auth.NewMemory("", "", nil), server)
 	expectExitStatus(t, term, runCommand(cc, []string{"nosuchcmd"}), cli.ExitUsage)
 	expectOutput(t, term, "", "Error: unknown command \"nosuchcmd\" for \"fury\"\nRun 'fury --help' for usage.\n")
 }
@@ -504,10 +505,10 @@ func TestCommandsInterrupted(t *testing.T) {
 		"download":       {[]string{"beta", "download", "foo@1.0", "bar@1.0"}, ""},
 	} {
 		t.Run(name, func(t *testing.T) {
-			auth := terminal.TestAuther("user", "abc123", nil)
+			store := auth.NewMemory("user", "abc123", nil)
 			term := terminal.NewForTest()
 
-			cc, cancel := context.WithCancel(cli.TestContext(t.Context(), term, auth))
+			cc, cancel := context.WithCancel(cli.TestContext(t.Context(), term, store))
 			defer cancel()
 
 			var requests atomic.Int32
@@ -532,10 +533,10 @@ func TestCommandsInterrupted(t *testing.T) {
 // An interruption between items leaves the command incomplete: it must
 // fail, though no item has, and must not attempt the remaining items
 func TestMultiItemCommandInterruptedBetweenItems(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
-	cc, cancel := context.WithCancel(cli.TestContext(t.Context(), term, auth))
+	cc, cancel := context.WithCancel(cli.TestContext(t.Context(), term, store))
 	defer cancel()
 
 	server := testutil.APIServer(t, "POST", "/uploads", pushResponse, 200)
@@ -584,14 +585,14 @@ func TestConfirmationByFlag(t *testing.T) {
 		"--force --no-input":         {[]string{"yank", "foo@0.0.1", "--force", "--no-input"}, false, 2},
 	} {
 		t.Run(name, func(t *testing.T) {
-			auth := terminal.TestAuther("user", "abc123", nil)
+			store := auth.NewMemory("user", "abc123", nil)
 			term := terminal.NewForTest()
 			term.SetInteractive(!tc.noUser)
 
 			var mutations atomic.Int32
 			server := mutableServer(t, &mutations)
 
-			cc := testContext(t, term, auth, server)
+			cc := testContext(t, term, store, server)
 			if err := runCommandNoErr(cc, tc.args); err != nil {
 				t.Fatal(err)
 			}
@@ -616,21 +617,21 @@ func TestConfirmationNeeded(t *testing.T) {
 			"with --no-input":    {"--no-input"},
 		} {
 			t.Run(strings.Join(args, " ")+" "+name, func(t *testing.T) {
-				auth := terminal.TestAuther("user", "abc123", nil)
+				store := auth.NewMemory("user", "abc123", nil)
 				term := terminal.NewForTest()
 				term.SetInteractive(flags != nil) // At a terminal
 
 				var mutations atomic.Int32
 				server := mutableServer(t, &mutations)
 
-				cc := testContext(t, term, auth, server)
+				cc := testContext(t, term, store, server)
 				err := runCommand(cc, slices.Concat(args, flags))
 				if !errors.Is(err, terminal.ErrNoInput) {
 					t.Errorf("Expected terminal.ErrNoInput, got: %v", err)
 				}
 
 				expectErrOutput(t, term, "Error: Confirmation needed. Pass --yes to confirm, as there is no one to ask.\n")
-				expectCredentials(t, auth, "user", "abc123")
+				expectCredentials(t, store, "user", "abc123")
 
 				if n := mutations.Load(); n != 0 {
 					t.Errorf("Expected no requests to change things, got %d", n)

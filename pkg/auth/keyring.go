@@ -1,4 +1,4 @@
-package terminal
+package auth
 
 import (
 	"github.com/zalando/go-keyring"
@@ -67,43 +67,28 @@ func (systemKeyring) Delete() error {
 	return keyring.Delete(keyringService, keyringAccount)
 }
 
-// FallbackAuther is an Auther that tells what its user is to know of the
-// session that it has saved last, when that did not go as it would by
-// default: it is to be asked right after the session is saved
-type FallbackAuther interface {
-	Auther
+var _ FallbackStore = (*credStore)(nil)
 
-	// Fallback is the path of .netrc when the session was saved there for
-	// want of a keychain, rather than as asked
-	Fallback() string
-
-	// GitSetup is the commands that set this CLI as the credential helper
-	// of Git, when the session is in the keychain and Git could not be set
-	GitSetup() []string
-}
-
-var _ FallbackAuther = (*credStore)(nil)
-
-// CredentialStore saves the session in the system keychain, or else in
-// .netrc: where there is no keychain, where the keychain fails, or as
-// asked by FURY_NETRC_WRITE=true. A session in the keychain is not in
-// .netrc for Git to read, so Git is given "fury git credentials" as its
-// credential helper for git.fury.io. The environment, of FURY_NETRC_WRITE
-// and NETRC, is that of the terminal.
-func CredentialStore(t Terminal) Auther {
-	timeout := keyringUnattendedTimeout
-	if t.IsInteractive() {
-		timeout = keyringTimeout
-	}
-
+// New is the store of the process: the session goes to the system keychain,
+// or else to .netrc, where there is no keychain, where it fails, or as asked
+// by FURY_NETRC_WRITE=true. A session in the keychain is not in .netrc for
+// Git to read, so Git is given "fury git credentials" as its credential
+// helper for git.fury.io. The environment, of FURY_NETRC_WRITE and NETRC,
+// and whether anyone is there to unlock the keychain are the terminal's.
+func New(t Terminal) FallbackStore {
 	return &credStore{
 		netrc:     newNetrc(t.Getenv),
 		ring:      systemKeyring{},
 		git:       gitConfig{},
 		reachable: keyringReachable,
-		timeout:   timeout,
 		notice:    keyringNotice,
 		waiting:   func() { t.EPrintf("Waiting for the system keychain ...\n") },
+		timeout: func() time.Duration {
+			if t.IsInteractive() {
+				return keyringTimeout
+			}
+			return keyringUnattendedTimeout
+		},
 	}
 }
 
@@ -112,7 +97,7 @@ type credStore struct {
 	ring      secrets
 	git       gitHelper
 	reachable func() bool
-	timeout   time.Duration
+	timeout   func() time.Duration // For the keychain to answer; asked of the terminal at each wait
 	notice    time.Duration
 	waiting   func() // Tells of a wait for the keychain: nil once it has
 
@@ -252,7 +237,7 @@ func (s *credStore) ask(question func() (string, error)) (string, error) {
 		notice = time.After(s.notice)
 	}
 
-	timeout := time.After(s.timeout)
+	timeout := time.After(s.timeout())
 	for {
 		select {
 		case a := <-done:

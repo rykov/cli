@@ -4,6 +4,7 @@ import (
 	"github.com/cenkalti/backoff/v7"
 	"github.com/gemfury/cli/api"
 	"github.com/gemfury/cli/internal/ctx"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
@@ -75,7 +76,7 @@ func contextAuthToken(cc context.Context) (string, error) {
 	if token, err := inlineAuthToken(cc); token != "" || err != nil {
 		return token, err
 	}
-	_, token, err := ctx.Auther(cc).Auth()
+	_, token, err := ctx.Auth(cc).Auth()
 	return token, err
 }
 
@@ -273,12 +274,12 @@ func ensureAuthenticated(cmd *cobra.Command, interactive bool) (*api.AccountResp
 // the user when it is not in the keychain, where it is expected to be, or
 // when Git is not set to ask this CLI for it
 func saveSession(cc context.Context, email, token string) error {
-	auth := ctx.Auther(cc)
-	if err := auth.Append(email, token); err != nil {
+	store := ctx.Auth(cc)
+	if err := store.Append(email, token); err != nil {
 		return err
 	}
 
-	if fb, ok := auth.(terminal.FallbackAuther); ok {
+	if fb, ok := store.(auth.FallbackStore); ok {
 		term := ctx.Terminal(cc)
 		if path := fb.Fallback(); path != "" {
 			term.Infof("Credentials are saved in %s, as the system keychain is not available\n", path)

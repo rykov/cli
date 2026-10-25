@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"github.com/gemfury/cli/cli"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
 
 	"errors"
@@ -14,12 +15,12 @@ const gitCredentialRequest = "protocol=https\nhost=git.fury.io\n\n"
 
 // gitCredentials runs the credential helper as Git does,
 // with what it asks on stdin, and without the API to ask
-func gitCredentials(t *testing.T, auth terminal.Auther, operation, request string) (terminal.TestTerm, error) {
+func gitCredentials(t *testing.T, store auth.Store, operation, request string) (terminal.TestTerm, error) {
 	t.Helper()
 	term := terminal.NewForTest()
 	term.InWrite([]byte(request))
 
-	cc := testContext(t, term, auth, offlineServer(t))
+	cc := testContext(t, term, store, offlineServer(t))
 	return term, runCommand(cc, []string{"git", "credentials", operation})
 }
 
@@ -46,8 +47,8 @@ func TestGitCredentialsGet(t *testing.T) {
 		"smuggled host":    {"protocol=https\nhost=github.com\rhost=git.fury.io\n\n", ""},
 	} {
 		t.Run(name, func(t *testing.T) {
-			auth := terminal.TestAuther("u@example.com", "abc123", nil)
-			term, err := gitCredentials(t, auth, "get", tc.request)
+			store := auth.NewMemory("u@example.com", "abc123", nil)
+			term, err := gitCredentials(t, store, "get", tc.request)
 			if err != nil {
 				t.Errorf("Command error: %s", err)
 			}
@@ -59,7 +60,7 @@ func TestGitCredentialsGet(t *testing.T) {
 
 // Without a session, Git is left to ask for the credentials
 func TestGitCredentialsLoggedOut(t *testing.T) {
-	term, err := gitCredentials(t, terminal.TestAuther("", "", nil), "get", gitCredentialRequest)
+	term, err := gitCredentials(t, auth.NewMemory("", "", nil), "get", gitCredentialRequest)
 	if err != nil {
 		t.Errorf("Command error: %s", err)
 	}
@@ -70,7 +71,7 @@ func TestGitCredentialsLoggedOut(t *testing.T) {
 // A session that cannot be read is an error, for Git to show
 func TestGitCredentialsUnreadable(t *testing.T) {
 	cause := errors.New("unreadable")
-	term, err := gitCredentials(t, terminal.TestAuther("", "", cause), "get", gitCredentialRequest)
+	term, err := gitCredentials(t, auth.NewMemory("", "", cause), "get", gitCredentialRequest)
 	if !errors.Is(err, cause) {
 		t.Errorf("Expected the failure to read, got: %v", err)
 	}
@@ -84,7 +85,7 @@ func TestGitCredentialsIgnored(t *testing.T) {
 	for _, operation := range []string{"store", "erase", "capability"} {
 		t.Run(operation, func(t *testing.T) {
 			request := "protocol=https\nhost=git.fury.io\nusername=u@example.com\npassword=abc123\n\n"
-			term, err := gitCredentials(t, unusedAuther(), operation, request)
+			term, err := gitCredentials(t, unusedStore(), operation, request)
 			if err != nil {
 				t.Errorf("Command error: %s", err)
 			}
@@ -96,8 +97,8 @@ func TestGitCredentialsIgnored(t *testing.T) {
 
 // The helper that login sets for Git is a command of this CLI
 func TestGitCredentialHelperCommand(t *testing.T) {
-	cc := cli.TestContext(t.Context(), terminal.NewForTest(), terminal.TestAuther("", "", nil))
-	args := append(strings.Fields(terminal.GitCredentialHelper), "get")
+	cc := cli.TestContext(t.Context(), terminal.NewForTest(), auth.NewMemory("", "", nil))
+	args := append(strings.Fields(auth.GitCredentialHelper), "get")
 
 	found, err := exampleCommand(cc, args)
 	if err != nil {

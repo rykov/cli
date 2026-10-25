@@ -4,6 +4,7 @@ import (
 	"github.com/gemfury/cli/cli"
 	"github.com/gemfury/cli/internal/ctx"
 	"github.com/gemfury/cli/internal/testutil"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
 	"testing"
 )
@@ -17,13 +18,13 @@ const whoamiResponse = `{
 }`
 
 func TestWhoamiCommandSuccess(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	// Fire up test server
 	server := testutil.APIServer(t, "GET", "/users/me", whoamiResponse, 200)
 
-	cc := cli.TestContext(t.Context(), term, auth)
+	cc := cli.TestContext(t.Context(), term, store)
 	flags := ctx.GlobalFlags(cc)
 	flags.Endpoint = server.URL
 

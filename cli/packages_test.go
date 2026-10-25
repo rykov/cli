@@ -4,6 +4,7 @@ import (
 	"github.com/gemfury/cli/cli"
 	"github.com/gemfury/cli/internal/ctx"
 	"github.com/gemfury/cli/internal/testutil"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
 
 	"context"
@@ -50,14 +51,14 @@ var packagesResponses = []string{`[{
 // ==== packages ====
 
 func TestPackagesCommandSuccess(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	// Fire up test server
 	path := "/packages"
 	server := testutil.APIServerPaginated(t, "GET", path, packagesResponses, 200)
 
-	cc := cli.TestContext(t.Context(), term, auth)
+	cc := cli.TestContext(t.Context(), term, store)
 	flags := ctx.GlobalFlags(cc)
 	flags.Endpoint = server.URL
 
@@ -137,14 +138,14 @@ var versionsResponses = []string{`[{
 }]`}
 
 func TestVersionsCommandSuccess(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	// Fire up test server
 	path := "/packages/pkg-name/versions"
 	server := testutil.APIServerPaginated(t, "GET", path, versionsResponses, 200)
 
-	cc := testContext(t, term, auth, server)
+	cc := testContext(t, term, store, server)
 	err := runCommandNoErr(cc, []string{"versions", "pkg-name"})
 	if err != nil {
 		t.Fatal(err)
@@ -163,7 +164,7 @@ func TestVersionsCommandUnknownFields(t *testing.T) {
 	body := `[{"version": "1.0.0", "filename": "foo-1.0.0.tgz"}]`
 	server := testutil.APIServer(t, "GET", "/packages/pkg-name/versions", body, 200)
 
-	cc := testContext(t, term, terminal.TestAuther("user", "abc123", nil), server)
+	cc := testContext(t, term, auth.NewMemory("user", "abc123", nil), server)
 	if err := runCommandNoErr(cc, []string{"versions", "pkg-name"}); err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +205,7 @@ func TestVersionsCommandAtTerminal(t *testing.T) {
 
 	server := testutil.APIServer(t, "GET", "/packages/pkg-name/versions", "["+strings.Join(body, ",")+"]", 200)
 
-	cc := testContext(t, term, terminal.TestAuther("user", "abc123", nil), server)
+	cc := testContext(t, term, auth.NewMemory("user", "abc123", nil), server)
 	if err := runCommandNoErr(cc, []string{"versions", "pkg-name"}); err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +242,7 @@ func TestVersionsCommandTimeLocation(t *testing.T) {
 			term.SetTimeLocation(tc.loc)
 			server := testutil.APIServerPaginated(t, "GET", "/packages/pkg-name/versions", versionsResponses, 200)
 
-			cc := testContext(t, term, terminal.TestAuther("user", "abc123", nil), server)
+			cc := testContext(t, term, auth.NewMemory("user", "abc123", nil), server)
 			if err := runCommandNoErr(cc, []string{"versions", "pkg-name"}); err != nil {
 				t.Fatal(err)
 			}
@@ -272,13 +273,13 @@ func TestAgoString(t *testing.T) {
 }
 
 func TestVersionsCommandEmpty(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	path := "/packages/pkg-name/versions"
 	server := testutil.APIServer(t, "GET", path, "[]", 200)
 
-	cc := testContext(t, term, auth, server)
+	cc := testContext(t, term, store, server)
 	if err := runCommand(cc, []string{"versions", "pkg-name"}); err != nil {
 		t.Fatal(err)
 	}
@@ -306,10 +307,10 @@ func compactString(b []byte) string {
 
 // A listing interrupted between pages is incomplete, so it must fail
 func TestPackagesCommandCancelled(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
-	cc, cancel := context.WithCancel(cli.TestContext(t.Context(), term, auth))
+	cc, cancel := context.WithCancel(cli.TestContext(t.Context(), term, store))
 	defer cancel()
 
 	var requests atomic.Int32
@@ -350,7 +351,7 @@ func TestPackagesCommandRepeatedCursor(t *testing.T) {
 	})
 
 	term := terminal.NewForTest()
-	cc := testContext(t, term, terminal.TestAuther("user", "abc123", nil), server)
+	cc := testContext(t, term, auth.NewMemory("user", "abc123", nil), server)
 	err := runCommand(cc, []string{"packages"})
 	if err == nil || !strings.Contains(err.Error(), "Repeated pagination cursor") {
 		t.Fatalf("Expected cursor error, got %v", err)
@@ -368,8 +369,8 @@ func TestCommandInvalidEndpoint(t *testing.T) {
 		{"git", "config", "set", "repo", "A=1"},
 	} {
 		t.Run(args[0], func(t *testing.T) {
-			auth := terminal.TestAuther("user", "abc123", nil)
-			cc := cli.TestContext(t.Context(), terminal.NewForTest(), auth)
+			store := auth.NewMemory("user", "abc123", nil)
+			cc := cli.TestContext(t.Context(), terminal.NewForTest(), store)
 
 			flags := ctx.GlobalFlags(cc)
 			flags.PushEndpoint = "://invalid"

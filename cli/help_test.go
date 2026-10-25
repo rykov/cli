@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"github.com/gemfury/cli/cli"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
 	"github.com/spf13/cobra"
 
@@ -51,7 +52,7 @@ func TestHelpWithoutAuth(t *testing.T) {
 // of the root are for its subcommands; other groups have none.
 func TestHelpExamples(t *testing.T) {
 	// Commands are parsed and never run, so they need no API
-	cc := cli.TestContext(t.Context(), terminal.NewForTest(), terminal.TestAuther("", "", nil))
+	cc := cli.TestContext(t.Context(), terminal.NewForTest(), auth.NewMemory("", "", nil))
 	root := cli.NewRootCommand(cc)
 
 	for _, cmd := range allCommands(root) {

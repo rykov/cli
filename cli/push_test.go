@@ -5,6 +5,7 @@ import (
 	"github.com/gemfury/cli/cli"
 	"github.com/gemfury/cli/internal/ctx"
 	"github.com/gemfury/cli/internal/testutil"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
 	"github.com/spf13/afero"
 
@@ -25,7 +26,7 @@ const pushResponse = `{}`
 // ==== push ====
 
 func TestPushCommandSuccess(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 	var publicVal atomic.Value // Written by the server
 
@@ -58,7 +59,7 @@ func TestPushCommandSuccess(t *testing.T) {
 		})
 	})
 
-	cc := cli.TestContext(t.Context(), term, auth)
+	cc := cli.TestContext(t.Context(), term, store)
 	flags := ctx.GlobalFlags(cc)
 	flags.PushEndpoint = server.URL
 	flags.Endpoint = server.URL
@@ -99,12 +100,12 @@ func TestPushCommandUnauthorized(t *testing.T) {
 }
 
 func TestPushCommandForbidden(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	server := testutil.APIServer(t, "POST", "/uploads", "[]", 403)
 
-	cc := testContext(t, term, auth, server)
+	cc := testContext(t, term, store, server)
 	args := []string{"push", samplePackagePath()}
 	if err := runCommand(cc, args); !errors.Is(err, api.ErrForbidden) {
 		t.Errorf("Command not forbidden, error: %s", err)
@@ -137,11 +138,11 @@ func TestPushCommandNotFound(t *testing.T) {
 		"server's message": {[]string{file}, `{"error": "No such account"}`, "Uploading sample.txt - No such account\n", "Error: File \"sample.txt\": Server response: No such account\n"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			auth := terminal.TestAuther("user", "abc123", nil)
+			store := auth.NewMemory("user", "abc123", nil)
 			term := terminal.NewForTest()
 
 			server := testutil.APIServer(t, "POST", "/uploads", tc.body, 404)
-			cc := testContext(t, term, auth, server)
+			cc := testContext(t, term, store, server)
 			err := runCommand(cc, append([]string{"push"}, tc.args...))
 			expectExitStatus(t, term, err, cli.ExitNotFound)
 			expectOutput(t, term, tc.stdout, tc.stderr)
@@ -168,12 +169,12 @@ func TestPushCommandRefused(t *testing.T) {
 		"otherwise": {422, `[{"error":{"type":"Invalid","message":"Name is taken"}}]`, "Name is taken", "Name is taken", cli.ExitError},
 	} {
 		t.Run(name, func(t *testing.T) {
-			auth := terminal.TestAuther("user", "abc123", nil)
+			store := auth.NewMemory("user", "abc123", nil)
 			term := terminal.NewForTest()
 
 			server := testutil.APIServer(t, "POST", "/uploads", tc.body, tc.status)
 
-			cc := testContext(t, term, auth, server)
+			cc := testContext(t, term, store, server)
 			err := runCommand(cc, []string{"push", samplePackagePath()})
 			expectExitStatus(t, term, err, tc.exp)
 			expectOutput(t, term,
@@ -200,10 +201,10 @@ func failingUploadServer(t *testing.T) *httptest.Server {
 // A failure of the server has what to report it by in the status line
 // of its file, as stderr has only the summary of several
 func TestPushCommandServerFailure(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
-	cc := testContext(t, term, auth, failingUploadServer(t))
+	cc := testContext(t, term, store, failingUploadServer(t))
 	err := runCommand(cc, []string{"push", samplePackagePath(), samplePackagePath()})
 	expectSummaryError(t, err, api.ErrFuryServer, "2 of 2 uploads failed")
 
@@ -214,12 +215,12 @@ func TestPushCommandServerFailure(t *testing.T) {
 // One missing file among two: the other is still uploaded, each file gets
 // its status line on stdout, and stderr carries only the summary
 func TestPushCommandPartialFailure(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	server := testutil.APIServer(t, "POST", "/uploads", pushResponse, 200)
 
-	cc := testContext(t, term, auth, server)
+	cc := testContext(t, term, store, server)
 
 	// One good file whose name contains a "%", which the status line
 	// must not take for a format verb, and one missing file
@@ -242,13 +243,13 @@ func TestPushCommandPartialFailure(t *testing.T) {
 // An error that is not of the API, as of a server that is down, is
 // quoted in the status line. This one is worth trying again later.
 func TestPushCommandUnreachable(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	server := offlineServer(t)
 	server.Close()
 
-	cc := testContext(t, term, auth, server)
+	cc := testContext(t, term, store, server)
 	err := runCommand(cc, []string{"push", samplePackagePath()})
 	expectExitStatus(t, term, err, cli.ExitUnavailable)
 
@@ -258,11 +259,11 @@ func TestPushCommandUnreachable(t *testing.T) {
 
 // A directory is refused before anything is uploaded
 func TestPushCommandDirectory(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 	dir := t.TempDir()
 
-	cc := testContext(t, term, auth, offlineServer(t))
+	cc := testContext(t, term, store, offlineServer(t))
 	err := runCommand(cc, []string{"push", dir})
 	if !errors.Is(err, syscall.EISDIR) {
 		t.Errorf("Expected syscall.EISDIR, got: %v", err)
@@ -276,12 +277,12 @@ func TestPushCommandDirectory(t *testing.T) {
 // Files are read from the file system of the context, not from the disk:
 // the sample package, which is on disk, is not found
 func TestPushCommandFS(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 	server := testutil.APIServer(t, "POST", "/uploads", pushResponse, 200)
 
 	fsys := afero.NewMemMapFs()
-	cc := withFS(testContext(t, term, auth, server), fsys)
+	cc := withFS(testContext(t, term, store, server), fsys)
 	if err := afero.WriteFile(fsys, "/pkg-1.0.0.gem", []byte("gem"), 0600); err != nil {
 		t.Fatal(err)
 	}

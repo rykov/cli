@@ -3,6 +3,7 @@ package cli_test
 import (
 	"github.com/gemfury/cli/cli"
 	"github.com/gemfury/cli/internal/testutil"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
 
 	"bufio"
@@ -16,7 +17,7 @@ import (
 // terminal to login from, then returns the token and the account that
 // its API request was sent with. With env, the terminal has an
 // environment of its own; without, that of the process.
-func packagesRequest(t *testing.T, auth terminal.Auther, env map[string]string, flags []string) (token, account string) {
+func packagesRequest(t *testing.T, store auth.Store, env map[string]string, flags []string) (token, account string) {
 	t.Helper()
 
 	var sent bool
@@ -32,7 +33,7 @@ func packagesRequest(t *testing.T, auth terminal.Auther, env map[string]string, 
 	term.SetInteractive(false)
 	term.SetEnv(env)
 
-	cc := testContext(t, term, auth, server)
+	cc := testContext(t, term, store, server)
 	if err := runCommandNoErr(cc, append([]string{"packages"}, flags...)); err != nil {
 		t.Fatal(err)
 	} else if !sent {
@@ -45,11 +46,11 @@ func packagesRequest(t *testing.T, auth terminal.Auther, env map[string]string, 
 // The token is resolved from --api-token, then FURY_TOKEN, then the session
 // that "login" has saved
 func TestAuthTokenPrecedence(t *testing.T) {
-	saved := terminal.TestAuther("user", "saved-token", nil)
-	unused := unusedAuther()
+	saved := auth.NewMemory("user", "saved-token", nil)
+	unused := unusedStore()
 
 	for name, tc := range map[string]struct {
-		auth  terminal.Auther
+		store auth.Store
 		env   string
 		flags []string
 		exp   string
@@ -63,7 +64,7 @@ func TestAuthTokenPrecedence(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("FURY_TOKEN", tc.env)
 
-			if got, _ := packagesRequest(t, tc.auth, nil, tc.flags); got != tc.exp {
+			if got, _ := packagesRequest(t, tc.store, nil, tc.flags); got != tc.exp {
 				t.Errorf("Expected token %q, got %q", tc.exp, got)
 			}
 		})
@@ -101,7 +102,7 @@ func TestAuthTokenFromStdin(t *testing.T) {
 			term.SetInteractive(false)
 			term.InWrite([]byte(tc.stdin))
 
-			cc := testContext(t, term, unusedAuther(), server)
+			cc := testContext(t, term, unusedStore(), server)
 			err := runCommand(cc, []string{"packages", "--api-token", "-"})
 			if tc.exp == "" {
 				if !cli.IsUsageError(err) {
@@ -133,11 +134,11 @@ func TestAuthTokenNotGiven(t *testing.T) {
 			"dash":        {"-", true},
 		} {
 			t.Run(args[0]+" "+name, func(t *testing.T) {
-				auth := terminal.TestAuther("old@example.com", "old-token", nil)
+				store := auth.NewMemory("old@example.com", "old-token", nil)
 				term := terminal.NewForTest()
 				term.SetPromptResponses(map[string]string{"API token: ": tc.answer})
 
-				cc := testContext(t, term, auth, offlineServer(t))
+				cc := testContext(t, term, store, offlineServer(t))
 				err := runCommand(cc, args)
 				if !tc.usage {
 					expectUnconfirmed(t, term, err, true)
@@ -145,7 +146,7 @@ func TestAuthTokenNotGiven(t *testing.T) {
 					t.Errorf("Expected a usage error, got %v", err)
 				}
 
-				expectCredentials(t, auth, "old@example.com", "old-token")
+				expectCredentials(t, store, "old@example.com", "old-token")
 			})
 		}
 	}
@@ -153,7 +154,7 @@ func TestAuthTokenNotGiven(t *testing.T) {
 
 // The account is resolved from --account, then FURY_ACCOUNT
 func TestAccountPrecedence(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 
 	for name, tc := range map[string]struct {
 		env   string
@@ -168,7 +169,7 @@ func TestAccountPrecedence(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("FURY_ACCOUNT", tc.env)
 
-			if _, got := packagesRequest(t, auth, nil, tc.flags); got != tc.exp {
+			if _, got := packagesRequest(t, store, nil, tc.flags); got != tc.exp {
 				t.Errorf("Expected account %q, got %q", tc.exp, got)
 			}
 		})
@@ -185,7 +186,7 @@ func TestAccountWithQuery(t *testing.T) {
 		})
 	})
 
-	cc := testContext(t, terminal.NewForTest(), terminal.TestAuther("user", "abc123", nil), server)
+	cc := testContext(t, terminal.NewForTest(), auth.NewMemory("user", "abc123", nil), server)
 	if err := runCommandNoErr(cc, []string{"versions", "foo", "--account", "org"}); err != nil {
 		t.Fatal(err)
 	} else if query.Get("expand") != "package" || query.Get("as") != "org" {
@@ -212,7 +213,7 @@ func TestEnvironmentOfTerminal(t *testing.T) {
 	t.Setenv("FURY_ACCOUNT", "process-org")
 	env := map[string]string{"FURY_TOKEN": "session-token", "FURY_ACCOUNT": "session-org"}
 
-	token, account := packagesRequest(t, unusedAuther(), env, nil)
+	token, account := packagesRequest(t, unusedStore(), env, nil)
 	if token != env["FURY_TOKEN"] || account != env["FURY_ACCOUNT"] {
 		t.Errorf("Expected token %q and account %q, got %q and %q",
 			env["FURY_TOKEN"], env["FURY_ACCOUNT"], token, account)

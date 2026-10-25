@@ -2,6 +2,7 @@ package ctx_test
 
 import (
 	"github.com/gemfury/cli/internal/ctx"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
 
 	"testing"
@@ -12,7 +13,7 @@ import (
 func TestWithTerminal(t *testing.T) {
 	term, other := terminal.NewForTest(), terminal.NewForTest()
 	parent := ctx.NewContext(t.Context(), ctx.Cmd{
-		Auther:   terminal.TestAuther("user", "token", nil),
+		Auth:     auth.NewMemory("user", "token", nil),
 		Terminal: term,
 	})
 	derived := ctx.WithTerminal(parent, other)
@@ -23,8 +24,8 @@ func TestWithTerminal(t *testing.T) {
 	if ctx.Terminal(derived) != other {
 		t.Error("Expected the derived context to have the other terminal")
 	}
-	if ctx.Auther(derived) != ctx.Auther(parent) {
-		t.Error("Expected the derived context to keep the auther")
+	if ctx.Auth(derived) != ctx.Auth(parent) {
+		t.Error("Expected the derived context to keep the store")
 	}
 
 	flags := ctx.GlobalFlags(parent)

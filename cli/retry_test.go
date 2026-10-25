@@ -3,6 +3,7 @@ package cli_test
 import (
 	"github.com/gemfury/cli/cli"
 	"github.com/gemfury/cli/internal/testutil"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
 
 	"context"
@@ -62,7 +63,7 @@ func TestRetries(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("FURY_RETRIES", tc.env)
-			auth := terminal.TestAuther("user", "abc123", nil)
+			store := auth.NewMemory("user", "abc123", nil)
 			term := terminal.NewForTest()
 
 			var requests atomic.Int32
@@ -70,7 +71,7 @@ func TestRetries(t *testing.T) {
 				mux.HandleFunc("GET /packages", respondInTurn(&requests, tc.statuses...))
 			})
 
-			cc := testContext(t, term, auth, server)
+			cc := testContext(t, term, store, server)
 			err := runCommand(cc, slices.Concat([]string{"packages"}, tc.flags))
 			expectExitStatus(t, term, err, tc.exp)
 			expectProblems(t, term, tc.stderr)
@@ -92,13 +93,13 @@ func TestRetriesOfTerminal(t *testing.T) {
 // A request that cannot connect is sent again too, after a second
 func TestRetriesConnectionFailed(t *testing.T) {
 	t.Setenv("FURY_RETRIES", "1")
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	server := offlineServer(t)
 	server.Close() // Nothing listens any more
 
-	cc := testContext(t, term, auth, server)
+	cc := testContext(t, term, store, server)
 	expectExitStatus(t, term, runCommand(cc, []string{"packages"}), cli.ExitUnavailable)
 	expectProblems(t, term, "Connection failed. Retrying in 1s\nError: ")
 }
@@ -106,7 +107,7 @@ func TestRetriesConnectionFailed(t *testing.T) {
 // A request that writes is never sent again, as its body cannot be replayed
 func TestRetriesNotOnWrite(t *testing.T) {
 	t.Setenv("FURY_RETRIES", "")
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	var requests atomic.Int32
@@ -114,7 +115,7 @@ func TestRetriesNotOnWrite(t *testing.T) {
 		mux.HandleFunc("POST /uploads", respondInTurn(&requests, 503))
 	})
 
-	cc := testContext(t, term, auth, server)
+	cc := testContext(t, term, store, server)
 	expectExitStatus(t, term, runCommand(cc, []string{"push", samplePackagePath()}), cli.ExitUnavailable)
 	expectErrOutput(t, term, "Error: Something went wrong. Please contact support. (HTTP 503)\n")
 	if n := requests.Load(); n != 1 {
@@ -140,7 +141,7 @@ func TestRetryAfter(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("FURY_RETRIES", "")
-			auth := terminal.TestAuther("user", "abc123", nil)
+			store := auth.NewMemory("user", "abc123", nil)
 			term := terminal.NewForTest()
 
 			var requests atomic.Int32
@@ -157,7 +158,7 @@ func TestRetryAfter(t *testing.T) {
 				})
 			})
 
-			cc, cancel := context.WithCancel(testContext(t, term, auth, server))
+			cc, cancel := context.WithCancel(testContext(t, term, store, server))
 			defer cancel()
 			interrupt := tc.wait == time.Minute
 			if interrupt {
@@ -196,7 +197,7 @@ func TestTimeout(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("FURY_RETRIES", "3")
-			auth := terminal.TestAuther("user", "abc123", nil)
+			store := auth.NewMemory("user", "abc123", nil)
 			term := terminal.NewForTest()
 
 			var requests atomic.Int32
@@ -204,7 +205,7 @@ func TestTimeout(t *testing.T) {
 				mux.HandleFunc("/", stall(func() { requests.Add(1) }))
 			})
 
-			cc := testContext(t, term, auth, server)
+			cc := testContext(t, term, store, server)
 			err := runCommand(cc, slices.Concat(args, []string{"--timeout", "50ms"}))
 			expectExitStatus(t, term, err, cli.ExitUnavailable)
 			expectErrOutput(t, term, "Error: Operation timed out. Try again later.\n")

@@ -4,6 +4,7 @@ import (
 	"github.com/gemfury/cli/cli"
 	"github.com/gemfury/cli/internal/ctx"
 	"github.com/gemfury/cli/internal/testutil"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
 
 	"net/http"
@@ -19,7 +20,7 @@ const (
 // ==== GIT REBUILD ====
 
 func TestGitRebuildCommandSuccess(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	// Revision input, output
@@ -37,7 +38,7 @@ func TestGitRebuildCommandSuccess(t *testing.T) {
 		})
 	})
 
-	cc := cli.TestContext(t.Context(), term, auth)
+	cc := cli.TestContext(t.Context(), term, store)
 	flags := ctx.GlobalFlags(cc)
 	flags.Endpoint = server.URL
 
@@ -107,13 +108,13 @@ func TestGitRebuildCommandForbidden(t *testing.T) {
 // ==== GIT RENAME ====
 
 func TestGitRenameCommandSuccess(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	// Fire up test server
 	server := testutil.APIServer(t, "PATCH", gitRepoPath, "{}", 200)
 
-	cc := cli.TestContext(t.Context(), term, auth)
+	cc := cli.TestContext(t.Context(), term, store)
 	flags := ctx.GlobalFlags(cc)
 	flags.Endpoint = server.URL
 
@@ -162,7 +163,7 @@ func TestGitDestroyCommandSuccess(t *testing.T) {
 		"reset -f":        {[]string{"git", "reset", "-f", "repo-name"}, "", "1", "Reset repo-name repository\n"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			auth := terminal.TestAuther("user", "abc123", nil)
+			store := auth.NewMemory("user", "abc123", nil)
 			term := terminal.NewForTest()
 
 			var requests atomic.Int32
@@ -181,7 +182,7 @@ func TestGitDestroyCommandSuccess(t *testing.T) {
 				term.SetPromptResponses(map[string]string{tc.confirm: "Y"})
 			}
 
-			cc := testContext(t, term, auth, server)
+			cc := testContext(t, term, store, server)
 			if err := runCommandNoErr(cc, tc.args); err != nil {
 				t.Fatal(err)
 			}
@@ -202,14 +203,14 @@ func TestGitDestroyCommandUnconfirmed(t *testing.T) {
 	} {
 		for answer, interrupted := range unconfirmed {
 			t.Run(args[1]+" "+answer, func(t *testing.T) {
-				auth := terminal.TestAuther("user", "abc123", nil)
+				store := auth.NewMemory("user", "abc123", nil)
 				term := terminal.NewForTest()
 
 				server := offlineServer(t)
 
 				term.SetPromptResponses(map[string]string{confirm: answer})
 
-				cc := testContext(t, term, auth, server)
+				cc := testContext(t, term, store, server)
 				expectUnconfirmed(t, term, runCommand(cc, args), interrupted)
 				if out := string(term.OutBytes()); out != "" {
 					t.Errorf("Expected no output, got %q", out)
@@ -244,14 +245,14 @@ func TestGitCommandsLocked(t *testing.T) {
 		{"git", "stack", "set", "repo-name", "stack-name"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
-			auth := terminal.TestAuther("user", "abc123", nil)
+			store := auth.NewMemory("user", "abc123", nil)
 			term := terminal.NewForTest()
 
 			server := testutil.APIServerCustom(t, func(mux *http.ServeMux) {
 				mux.HandleFunc("/", respondWith(409, `{"error":"Locked by another request"}`))
 			})
 
-			cc := testContext(t, term, auth, server)
+			cc := testContext(t, term, store, server)
 			expectExitStatus(t, term, runCommand(cc, args), cli.ExitUnavailable)
 			expectErrOutput(t, term, "Error: Repository \"repo-name\": Locked by another request\n")
 		})
@@ -271,14 +272,14 @@ var gitReposResponses = []string{`{ "repos": [{
 }]}`}
 
 func TestGitListCommandSuccess(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	// Fire up test server
 	path := "/git/repos/me"
 	server := testutil.APIServerPaginated(t, "GET", path, gitReposResponses, 200)
 
-	cc := cli.TestContext(t.Context(), term, auth)
+	cc := cli.TestContext(t.Context(), term, store)
 	flags := ctx.GlobalFlags(cc)
 	flags.Endpoint = server.URL
 

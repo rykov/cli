@@ -163,31 +163,6 @@ func (tt testTerm) RunPrompt(p *promptui.Prompt) (string, error) {
 	return "", io.EOF
 }
 
-// Implements Auther interface for testing
-func TestAuther(u, p string, err error) *testAuth {
-	return &testAuth{u, p, err}
-}
-
-type testAuth struct {
-	User string
-	Pass string
-	Err  error
-}
-
-func (a testAuth) Auth() (string, string, error) {
-	return a.User, a.Pass, a.Err
-}
-
-func (a *testAuth) Append(u, p string) error {
-	a.User, a.Pass = u, p
-	return a.Err
-}
-
-func (a *testAuth) Wipe() error {
-	a.User, a.Pass = "", ""
-	return a.Err
-}
-
 // Equivalent to http.HandlerFunc for writers
 type writerFunc func([]byte) (int, error)
 

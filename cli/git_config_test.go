@@ -4,6 +4,7 @@ import (
 	"github.com/gemfury/cli/cli"
 	"github.com/gemfury/cli/internal/ctx"
 	"github.com/gemfury/cli/internal/testutil"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
 	"strings"
 	"testing"
@@ -24,13 +25,13 @@ const (
 // ==== GIT CONFIG ====
 
 func TestGitConfigCommandSuccess(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	// Fire up test server
 	server := testutil.APIServer(t, "GET", gitConfigPath, gitConfigResponse, 200)
 
-	cc := cli.TestContext(t.Context(), term, auth)
+	cc := cli.TestContext(t.Context(), term, store)
 	flags := ctx.GlobalFlags(cc)
 	flags.Endpoint = server.URL
 
@@ -58,13 +59,13 @@ func TestGitConfigCommandForbidden(t *testing.T) {
 // ==== GIT CONFIG GET ====
 
 func TestGitConfigGetCommandSuccess(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	// Fire up test server
 	server := testutil.APIServer(t, "GET", gitConfigPath, gitConfigResponse, 200)
 
-	cc := cli.TestContext(t.Context(), term, auth)
+	cc := cli.TestContext(t.Context(), term, store)
 	flags := ctx.GlobalFlags(cc)
 	flags.Endpoint = server.URL
 
@@ -94,13 +95,13 @@ func TestGitConfigGetCommandForbidden(t *testing.T) {
 // ==== GIT CONFIG SET ====
 
 func TestGitConfigSetCommandSuccess(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	// Fire up test server
 	server := testutil.APIServer(t, "PATCH", gitConfigPath, gitConfigResponse, 200)
 
-	cc := cli.TestContext(t.Context(), term, auth)
+	cc := cli.TestContext(t.Context(), term, store)
 	flags := ctx.GlobalFlags(cc)
 	flags.Endpoint = server.URL
 
@@ -128,13 +129,13 @@ func TestGitConfigSetCommandForbidden(t *testing.T) {
 // ==== GIT CONFIG UNSET ====
 
 func TestGitConfigUnsetCommandSuccess(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	// Fire up test server
 	server := testutil.APIServer(t, "PATCH", gitConfigPath, gitConfigResponse, 200)
 
-	cc := cli.TestContext(t.Context(), term, auth)
+	cc := cli.TestContext(t.Context(), term, store)
 	flags := ctx.GlobalFlags(cc)
 	flags.Endpoint = server.URL
 

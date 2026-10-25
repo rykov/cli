@@ -1,4 +1,4 @@
-package terminal
+package auth
 
 import (
 	"github.com/bgentry/go-netrc/netrc"
@@ -17,19 +17,11 @@ import (
 )
 
 // Machines for Gemfury in .netrc file
-var (
-	netrcMachines = []string{"api.fury.io", GitHost}
-)
-
-type Auther interface {
-	Auth() (string, string, error)
-	Append(string, string) error
-	Wipe() error
-}
+var netrcMachines = []string{"api.fury.io", GitHost}
 
 // Netrc is the session in the .netrc file, whose path is read
 // from the environment by getenv
-func Netrc(getenv func(string) string) Auther {
+func Netrc(getenv func(string) string) Store {
 	return newNetrc(getenv)
 }
 

@@ -5,6 +5,7 @@ import (
 	"github.com/gemfury/cli/cli"
 	"github.com/gemfury/cli/internal/ctx"
 	"github.com/gemfury/cli/internal/testutil"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
 	"github.com/spf13/afero"
 
@@ -71,11 +72,11 @@ func downloadServer(t *testing.T) *httptest.Server {
 // ==== beta download ====
 
 func TestDownloadCommandSuccess(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	server := downloadServer(t)
-	cc := testContext(t, term, auth, server)
+	cc := testContext(t, term, store, server)
 
 	// A trailing slash on a configured endpoint must be tolerated
 	ctx.GlobalFlags(cc).Endpoint = server.URL + "/"
@@ -119,7 +120,7 @@ func TestDownloadCommandEndpointPath(t *testing.T) {
 		})
 	})
 
-	cc := testContext(t, terminal.NewForTest(), terminal.TestAuther("user", "abc123", nil), server)
+	cc := testContext(t, terminal.NewForTest(), auth.NewMemory("user", "abc123", nil), server)
 	ctx.GlobalFlags(cc).Endpoint = server.URL + "/api"
 	t.Chdir(t.TempDir())
 
@@ -151,7 +152,7 @@ func stalledDownload(then func()) http.HandlerFunc {
 // A download that stalls past --timeout while its file is read fails as
 // a timeout, and leaves no partial file in the file system of the context
 func TestDownloadCommandTimeout(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	server := testutil.APIServerCustom(t, func(mux *http.ServeMux) {
@@ -160,7 +161,7 @@ func TestDownloadCommandTimeout(t *testing.T) {
 	})
 
 	fsys := afero.NewMemMapFs()
-	cc := withFS(testContext(t, term, auth, server), fsys)
+	cc := withFS(testContext(t, term, store, server), fsys)
 
 	err := runCommand(cc, []string{"beta", "download", "foo@1.2.3", "--timeout", "50ms"})
 	expectExitStatus(t, term, err, cli.ExitUnavailable)
@@ -170,7 +171,7 @@ func TestDownloadCommandTimeout(t *testing.T) {
 
 // A download_url on a foreign host is refused rather than sent our token
 func TestDownloadCommandForeignURL(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	server := testutil.APIServerCustom(t, func(mux *http.ServeMux) {
@@ -181,7 +182,7 @@ func TestDownloadCommandForeignURL(t *testing.T) {
 		})
 	})
 
-	cc := testContext(t, term, auth, server)
+	cc := testContext(t, term, store, server)
 	t.Chdir(t.TempDir())
 
 	err := runCommand(cc, []string{"beta", "download", "foo@1.2.3"})
@@ -194,10 +195,10 @@ func TestDownloadCommandForeignURL(t *testing.T) {
 
 // An interrupted download leaves no partial file to fail a later checksum
 func TestDownloadCommandInterrupted(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
-	cc, cancel := context.WithCancel(cli.TestContext(t.Context(), term, auth))
+	cc, cancel := context.WithCancel(cli.TestContext(t.Context(), term, store))
 	defer cancel()
 
 	server := testutil.APIServerCustom(t, func(mux *http.ServeMux) {
@@ -243,7 +244,7 @@ func TestBackupCommandSuccess(t *testing.T) {
 // creates in fsys alone
 func testBackupSuccess(t *testing.T, fsys afero.Fs) string {
 	t.Helper()
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	var downloads int
@@ -263,7 +264,7 @@ func testBackupSuccess(t *testing.T, fsys afero.Fs) string {
 		})
 	})
 
-	cc := withFS(testContext(t, term, auth, server), fsys)
+	cc := withFS(testContext(t, term, store, server), fsys)
 
 	dest := filepath.Join(t.TempDir(), "backup")
 	if err := fsys.MkdirAll(dest, 0700); err != nil {
@@ -350,7 +351,7 @@ func TestDownloadCommandChecksumMismatch(t *testing.T) {
 		"--yes":     {downloadContent, downloadContent, ""},
 	} {
 		t.Run(answer, func(t *testing.T) {
-			auth := terminal.TestAuther("user", "abc123", nil)
+			store := auth.NewMemory("user", "abc123", nil)
 			term := terminal.NewForTest()
 
 			// The answer is given by the flag, or else by the user
@@ -368,7 +369,7 @@ func TestDownloadCommandChecksumMismatch(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			cc := withFS(testContext(t, term, auth, downloadServer(t)), fsys)
+			cc := withFS(testContext(t, term, store, downloadServer(t)), fsys)
 			err := runCommand(cc, args)
 			if (err != nil) != (tc.stderr != "") {
 				t.Errorf("Unexpected command error: %v", err)
@@ -388,7 +389,7 @@ func TestDownloadCommandChecksumMismatch(t *testing.T) {
 // A file that is there already is kept, with a warning that
 // --quiet does not hide, when the API has no checksum to verify it by
 func TestDownloadCommandNoChecksum(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	server := testutil.APIServerCustom(t, func(mux *http.ServeMux) {
@@ -403,7 +404,7 @@ func TestDownloadCommandNoChecksum(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cc := testContext(t, term, auth, server)
+	cc := testContext(t, term, store, server)
 	if err := runCommand(cc, []string{"beta", "download", "foo@1.2.3", "--quiet"}); err != nil {
 		t.Fatal(err)
 	}
@@ -425,7 +426,7 @@ func TestDownloadCommandChecksumMismatchUnattended(t *testing.T) {
 		"one not found":    {"9.9.9", cli.ExitError},
 	} {
 		t.Run(name, func(t *testing.T) {
-			auth := terminal.TestAuther("user", "abc123", nil)
+			store := auth.NewMemory("user", "abc123", nil)
 			term := terminal.NewForTest()
 			term.SetInteractive(false)
 
@@ -441,7 +442,7 @@ func TestDownloadCommandChecksumMismatchUnattended(t *testing.T) {
 				}
 			}
 
-			cc := testContext(t, term, auth, server)
+			cc := testContext(t, term, store, server)
 			err := runCommand(cc, []string{"beta", "download", "foo@1.2.3", "bar@" + tc.bar})
 			expectExitStatus(t, term, err, tc.exp)
 		})
@@ -450,12 +451,12 @@ func TestDownloadCommandChecksumMismatchUnattended(t *testing.T) {
 
 // Versions that are missing: each is reported, in order, then summarized
 func TestDownloadCommandFailures(t *testing.T) {
-	auth := terminal.TestAuther("user", "abc123", nil)
+	store := auth.NewMemory("user", "abc123", nil)
 	term := terminal.NewForTest()
 
 	server := testutil.APIServer(t, "GET", "/packages/{pkg}/versions/1.2.3", "", 404)
 
-	cc := testContext(t, term, auth, server)
+	cc := testContext(t, term, store, server)
 	err := runCommand(cc, []string{"beta", "download", "foo@1.2.3", "bar@1.2.3"})
 	expectSummaryError(t, err, api.ErrNotFound, "2 of 2 downloads failed")
 	expectProblems(t, term,

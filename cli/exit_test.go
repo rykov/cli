@@ -5,6 +5,7 @@ import (
 	"github.com/gemfury/cli/cli"
 	"github.com/gemfury/cli/internal/ctx"
 	"github.com/gemfury/cli/internal/testutil"
+	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
 
 	"bytes"
@@ -130,14 +131,14 @@ func TestCommandExitStatusSeveralItems(t *testing.T) {
 		"items fail otherwise": {[]string{"missing@1.0", "secret@1.0"}, cli.ExitError},
 	} {
 		t.Run(name, func(t *testing.T) {
-			auth := terminal.TestAuther("user", "abc123", nil)
+			store := auth.NewMemory("user", "abc123", nil)
 			term := terminal.NewForTest()
 
 			server := testutil.APIServerCustom(t, func(mux *http.ServeMux) {
 				mux.HandleFunc("GET /versions", lookup)
 			})
 
-			cc := testContext(t, term, auth, server)
+			cc := testContext(t, term, store, server)
 			err := runCommand(cc, append([]string{"yank", "--force"}, tc.args...))
 			expectExitStatus(t, term, err, tc.exp)
 		})
@@ -181,7 +182,7 @@ func TestCommandErrorMessage(t *testing.T) {
 		"server, in its words": {500, "req-1", `{"error": "Out of disk"}`, "Out of disk (HTTP 500, request ID req-1)", cli.ExitUnavailable},
 	} {
 		t.Run(name, func(t *testing.T) {
-			auth := terminal.TestAuther("user", "abc123", nil)
+			store := auth.NewMemory("user", "abc123", nil)
 			term := terminal.NewForTest()
 
 			server := testutil.APIServerCustom(t, func(mux *http.ServeMux) {
@@ -193,7 +194,7 @@ func TestCommandErrorMessage(t *testing.T) {
 				})
 			})
 
-			cc := testContext(t, term, auth, server)
+			cc := testContext(t, term, store, server)
 			expectExitStatus(t, term, runCommand(cc, []string{"versions", "foo"}), tc.exp)
 			expectOutput(t, term, "", "Error: "+tc.message+"\n")
 		})
@@ -212,7 +213,7 @@ func TestCommandExitStatusNotLoggedIn(t *testing.T) {
 		"login cancelled":  {[]string{"packages"}, true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			auth := terminal.TestAuther("", "", nil)
+			store := auth.NewMemory("", "", nil)
 			term := terminal.NewForTest()
 			term.SetInteractive(tc.user)
 			term.InWrite([]byte("q")) // Backs out of the login, if asked
@@ -220,9 +221,9 @@ func TestCommandExitStatusNotLoggedIn(t *testing.T) {
 			// Only the default handlers of login, which is never completed
 			server := testutil.APIServerCustom(t, func(*http.ServeMux) {})
 
-			cc := testContext(t, term, auth, server)
+			cc := testContext(t, term, store, server)
 			expectExitStatus(t, term, runCommand(cc, tc.args), cli.ExitAuth)
-			expectCredentials(t, auth, "", "")
+			expectCredentials(t, store, "", "")
 		})
 	}
 }
@@ -241,10 +242,10 @@ func TestCommandExitStatusUnreachable(t *testing.T) {
 		"not an endpoint": {"://invalid", cli.ExitError},
 	} {
 		t.Run(name, func(t *testing.T) {
-			auth := terminal.TestAuther("user", "abc123", nil)
+			store := auth.NewMemory("user", "abc123", nil)
 			term := terminal.NewForTest()
 
-			cc := testContext(t, term, auth, server)
+			cc := testContext(t, term, store, server)
 			ctx.GlobalFlags(cc).Endpoint = tc.endpoint
 			expectExitStatus(t, term, runCommand(cc, []string{"versions", "foo"}), tc.exp)
 			if stderr := term.ErrBytes(); len(stderr) == 0 || bytes.Contains(stderr, []byte("Package ")) {
