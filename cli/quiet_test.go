@@ -121,7 +121,7 @@ func TestQuietCommand(t *testing.T) {
 // With --quiet, a failure is reported as without. "push" has no status
 // line to report a failed file by, so that is on stderr too.
 func TestQuietFailure(t *testing.T) {
-	const problem = "Problem uploading \"sample.txt\": " + uploadFailureMessage
+	const problem = "✗ Problem uploading \"sample.txt\": " + uploadFailureMessage
 	file := samplePackagePath()
 
 	for name, tc := range map[string]struct {

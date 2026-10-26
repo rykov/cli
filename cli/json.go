@@ -24,7 +24,7 @@ func printsJSON(cmd *cobra.Command) bool {
 
 // termPrintJSON prints v as one indented JSON document, without HTML
 // escaping. The API structs give the shape: see the root help.
-func termPrintJSON(term terminal.Terminal, v any) error {
+func termPrintJSON(term *terminal.UI, v any) error {
 	enc := json.NewEncoder(term.IOOut())
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")

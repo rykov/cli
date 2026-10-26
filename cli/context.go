@@ -12,7 +12,7 @@ import (
 // NewContext is the context for executing a command with the given
 // terminal, store, and file system, such as those of a session of a host.
 // It is for one run of one command, which parses its flags into it.
-func NewContext(parent context.Context, t terminal.Terminal, a auth.Store, fsys afero.Fs) context.Context {
+func NewContext(parent context.Context, t *terminal.UI, a auth.Store, fsys afero.Fs) context.Context {
 	return ctx.NewContext(parent, ctx.Cmd{Auth: a, Terminal: t, FS: fsys})
 }
 
@@ -25,6 +25,6 @@ func CommandContext() context.Context {
 
 // TestContext is the context for executing commands in testing,
 // derived from the parent context, such as the one of the test
-func TestContext(parent context.Context, t terminal.Terminal, a auth.Store) context.Context {
+func TestContext(parent context.Context, t *terminal.UI, a auth.Store) context.Context {
 	return NewContext(parent, t, a, afero.NewOsFs())
 }

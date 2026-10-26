@@ -15,7 +15,7 @@ const gitCredentialRequest = "protocol=https\nhost=git.fury.io\n\n"
 
 // gitCredentials runs the credential helper as Git does,
 // with what it asks on stdin, and without the API to ask
-func gitCredentials(t *testing.T, store auth.Store, operation, request string) (terminal.TestTerm, error) {
+func gitCredentials(t *testing.T, store auth.Store, operation, request string) (*terminal.UI, error) {
 	t.Helper()
 	term := terminal.NewForTest()
 	term.InWrite([]byte(request))

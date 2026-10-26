@@ -1,10 +1,44 @@
 package cli
 
 import (
+	"github.com/charmbracelet/x/ansi"
+
 	"fmt"
+	"io"
 	"strings"
 	"time"
 )
+
+// printTable prints rows as columns two spaces apart, as text/tabwriter
+// does, but measures each cell as shown: without its colour sequences, and
+// by the cells a terminal gives its runes (two for CJK and emoji), so that
+// a styled or wide cell keeps its column aligned. The last cell of a row is
+// not padded.
+func printTable(w io.Writer, rows [][]string) {
+	width := ansi.StringWidth
+
+	var widths []int
+	for _, row := range rows {
+		for i, cell := range row {
+			if i == len(widths) {
+				widths = append(widths, 0)
+			}
+			widths[i] = max(widths[i], width(cell))
+		}
+	}
+
+	var out strings.Builder
+	for _, row := range rows {
+		for i, cell := range row {
+			out.WriteString(cell)
+			if i < len(row)-1 {
+				out.WriteString(strings.Repeat(" ", widths[i]-width(cell)+2))
+			}
+		}
+		out.WriteString("\n")
+	}
+	io.WriteString(w, out.String())
+}
 
 // timeString is a time as printed in a table, in the zone of the terminal.
 // At a terminal it has how long ago it was, when under a day. Piped, it is

@@ -92,7 +92,7 @@ func TestGitStackSetCommandSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	exp := "Updated repo-name repository build stack"
+	exp := "✔ Updated repo-name repository build stack"
 	if outStr := compactString(term.OutBytes()); outStr != exp {
 		t.Errorf("Expected output to include %q, got %q", exp, outStr)
 	}

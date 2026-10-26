@@ -4,9 +4,7 @@ import (
 	"github.com/gemfury/cli/internal/ctx"
 	"github.com/spf13/cobra"
 	"strings"
-	"text/tabwriter"
 
-	"fmt"
 	"maps"
 	"slices"
 )
@@ -70,13 +68,11 @@ func filteredGitConfig(cmd *cobra.Command, args []string) error {
 	}
 
 	term.Infof("\n*** GIT CONFIG ***\n\n")
-	w := tabwriter.NewWriter(term.IOOut(), 0, 0, 2, ' ', 0)
-
+	var rows [][]string
 	for _, k := range slices.Sorted(maps.Keys(vars)) {
-		fmt.Fprintf(w, "%s:\t%s\n", k, vars[k])
+		rows = append(rows, []string{k + ":", vars[k]})
 	}
-
-	w.Flush()
+	printTable(term.IOOut(), rows)
 	return nil
 }
 
@@ -146,6 +142,6 @@ func gitConfigUpdate(cmd *cobra.Command, repo string, vars map[string]*string) e
 		return about("Repository", repo, err)
 	}
 
-	term.Infof("Updated %s repository config\n", repo)
+	term.Successf("Updated %s repository config\n", repo)
 	return nil
 }

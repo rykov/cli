@@ -23,6 +23,15 @@ import (
 // What the API responds with to the start of a browser login
 const loginCreateResponse = `{"browser_url": "https://gemfury.com", "cli_url": "/cli/auth", "token": "xyz"}`
 
+// The lines of a login, on stderr with its prompts, clear of the result of
+// the command that started it
+const (
+	browserPrompt     = "Press any key to login via the browser or q to exit: \n"
+	browserOpening    = "Opening https://gemfury.com\n"
+	browserLogin      = browserPrompt + browserOpening + "Failed to open browser. You can continue CLI login by manually opening the URL\n" // A test has no browser
+	credentialsBanner = "Please enter your Gemfury credentials.\n"
+)
+
 // Login is more or less the same as the "whoami" command
 // because all commands force a login if logged out
 // /login route is already present on APIServer
@@ -41,13 +50,13 @@ func TestLoginCommandSuccess(t *testing.T) {
 	// Add any key for the "open browser" prompt
 	term.InWrite([]byte("!"))
 
-	err := runCommandNoErr(cc, []string{"login"})
-	if err != nil {
+	if err := runCommand(cc, []string{"login"}); err != nil {
 		t.Error(err)
 	}
+	expectErrOutput(t, term, browserLogin)
 
 	outStr := string(term.OutBytes())
-	if exp := "You are logged in as \"u@example.com\"\n"; !strings.Contains(outStr, exp) {
+	if exp := "✔ You are logged in as \"u@example.com\"\n"; !strings.Contains(outStr, exp) {
 		t.Errorf("Expected output to include %q, got %q", exp, outStr)
 	}
 }
@@ -77,7 +86,7 @@ func (a fallbackStore) GitSetup() []string { return a.setup }
 // to ask this CLI, with how to set it by hand.
 func TestLoginCommandFallback(t *testing.T) {
 	note := "Credentials are saved in /home/u/.netrc, as the system keychain is not available\n"
-	warning := "Git is not set to ask this CLI for credentials, as its configuration could not be changed. To set it by hand:\n" +
+	warning := "! Git is not set to ask this CLI for credentials, as its configuration could not be changed. To set it by hand:\n" +
 		"  git config one\n  git config two\n"
 
 	inNetrc := fallbackStore{path: "/home/u/.netrc"}
@@ -111,7 +120,7 @@ func TestLoginCommandFallback(t *testing.T) {
 
 			expectCredentials(t, store, "u@example.com", "token-abc-123")
 			expectOutputLines(t, term, "the system keychain", tc.notes...)
-			expectErrOutput(t, term, tc.stderr)
+			expectErrOutput(t, term, browserLogin+tc.stderr)
 		})
 	}
 }
@@ -198,17 +207,17 @@ func TestLoginCommandInteractive(t *testing.T) {
 	flags.Endpoint = server.URL
 
 	term.SetPromptResponses(map[string]string{
-		"Email: ":    "u@example.com",
-		"Password: ": "secreto",
+		"Email":    "u@example.com",
+		"Password": "secreto",
 	})
 
-	err := runCommandNoErr(cc, []string{"login", "--interactive"})
-	if err != nil {
+	if err := runCommand(cc, []string{"login", "--interactive"}); err != nil {
 		t.Error(err)
 	}
+	expectErrOutput(t, term, credentialsBanner)
 
 	outStr := string(term.OutBytes())
-	if exp := "You are logged in as \"u@example.com\"\n"; !strings.Contains(outStr, exp) {
+	if exp := "✔ You are logged in as \"u@example.com\"\n"; !strings.Contains(outStr, exp) {
 		t.Errorf("Expected output to include %q, got %q", exp, outStr)
 	}
 }
@@ -228,18 +237,18 @@ func TestLoginCommandInteractiveFallback(t *testing.T) {
 	flags.Endpoint = server.URL
 
 	term.SetPromptResponses(map[string]string{
-		"Email: ":    "u@example.com",
-		"Password: ": "secreto",
+		"Email":    "u@example.com",
+		"Password": "secreto",
 	})
 
-	// User requests browser, but we fall back to interactive
-	err := runCommandNoErr(cc, []string{"login"})
-	if err != nil {
+	// User requests browser, but we fall back to interactive, before any prompt
+	if err := runCommand(cc, []string{"login"}); err != nil {
 		t.Error(err)
 	}
+	expectErrOutput(t, term, credentialsBanner)
 
 	outStr := string(term.OutBytes())
-	if exp := "You are logged in as \"u@example.com\"\n"; !strings.Contains(outStr, exp) {
+	if exp := "✔ You are logged in as \"u@example.com\"\n"; !strings.Contains(outStr, exp) {
 		t.Errorf("Expected output to include %q, got %q", exp, outStr)
 	}
 }
@@ -263,13 +272,12 @@ func TestLoginCommandCancelled(t *testing.T) {
 
 			cc := testContext(t, term, store, server)
 			term.InWrite([]byte{key})
-			if err := runCommandNoErr(cc, []string{"login"}); err != nil {
+			if err := runCommand(cc, []string{"login"}); err != nil {
 				t.Error(err)
 			}
 
-			if outStr := string(term.OutBytes()); strings.Contains(outStr, "Opening") {
-				t.Errorf("Browser should not be opened, got %q", outStr)
-			}
+			// The prompt, and no "Opening": the browser is not opened
+			expectErrOutput(t, term, browserPrompt)
 
 			expectCredentials(t, store, "", "")
 		})
@@ -291,7 +299,7 @@ func TestCommandLoginCancelled(t *testing.T) {
 		t.Fatalf("Expected 'Login cancelled' error, got: %v", err)
 	}
 
-	expectErrOutput(t, term, "Error: Login cancelled\n")
+	expectErrOutput(t, term, browserPrompt+"Error: Login cancelled\n")
 }
 
 // Without credentials and without a terminal (pipe, CI), commands fail
@@ -367,9 +375,10 @@ func TestLoginCommandReplacesSavedToken(t *testing.T) {
 
 	cc := testContext(t, term, store, server)
 	term.InWrite([]byte("!"))
-	if err := runCommandNoErr(cc, []string{"login"}); err != nil {
+	if err := runCommand(cc, []string{"login"}); err != nil {
 		t.Fatal(err)
 	}
+	expectErrOutput(t, term, browserLogin)
 
 	if exp := []string{"old-token"}; !slices.Equal(revoked, exp) {
 		t.Errorf("Expected revoked tokens %q, got %q", exp, revoked)
@@ -400,7 +409,7 @@ func TestLoginCommandVerifiesEnvToken(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expectOutput(t, term, "API token belongs to \"joetest\"\n", "")
+	expectOutput(t, term, "✔ API token belongs to \"joetest\"\n", "")
 	expectCredentials(t, store, "old@example.com", "old-token")
 }
 
@@ -417,7 +426,7 @@ func TestLoginCommandSavesTokenFlag(t *testing.T) {
 	}{
 		"flag":         {"new-token", "", nil, "old-token", []string{"old-token"}},
 		"stdin piped":  {"-", "new-token\n", nil, "old-token", []string{"old-token"}},
-		"stdin prompt": {"-", "", map[string]string{"API token: ": "new-token"}, "old-token", []string{"old-token"}},
+		"stdin prompt": {"-", "", map[string]string{"API token": "new-token"}, "old-token", []string{"old-token"}},
 		"same token":   {"new-token", "", nil, "new-token", nil},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -443,7 +452,7 @@ func TestLoginCommandSavesTokenFlag(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			expectOutput(t, term, "You are logged in as \"joe@example.com\"\n", "")
+			expectOutput(t, term, "✔ You are logged in as \"joe@example.com\"\n", "")
 			expectCredentials(t, store, "joe@example.com", "new-token")
 			if !slices.Equal(revoked, tc.revoked) {
 				t.Errorf("Expected revoked tokens %q, got %q", tc.revoked, revoked)
@@ -465,7 +474,7 @@ func TestLoginCommandSavesOrgToken(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expectOutput(t, term, "You are logged in as \"test-org\"\n", "")
+	expectOutput(t, term, "✔ You are logged in as \"test-org\"\n", "")
 	expectCredentials(t, store, "test-org", "org-token")
 }
 
@@ -496,7 +505,7 @@ func TestLoginCommandTokenRefused(t *testing.T) {
 // the login fails. The new token is verified by then, and saved only
 // once that is settled.
 func TestLoginCommandTokenRevokeFails(t *testing.T) {
-	const confirm = "Do you want to ignore & continue with your login? [y/N]"
+	const confirm = "Do you want to ignore & continue with your login?"
 
 	for name, tc := range map[string]struct {
 		flags  []string
@@ -535,7 +544,7 @@ func TestLoginCommandTokenRevokeFails(t *testing.T) {
 				expectCredentials(t, store, "old@example.com", "old-token")
 			}
 
-			expectProblems(t, term, "Error deactivating your old CLI credentials: ")
+			expectProblems(t, term, "! Error deactivating your old CLI credentials: ")
 		})
 	}
 }
@@ -589,7 +598,7 @@ func TestLogoutCommandSuccess(t *testing.T) {
 			})
 
 			term.SetPromptResponses(map[string]string{
-				"Are you sure you want to logout? [y/N]": "Y",
+				"Are you sure you want to logout?": "Y",
 			})
 
 			cc := testContext(t, term, store, server)
@@ -597,7 +606,7 @@ func TestLogoutCommandSuccess(t *testing.T) {
 				t.Error(err)
 			}
 
-			expectOutput(t, term, "You have been logged out\n", "")
+			expectOutput(t, term, "✔ You have been logged out\n", "")
 
 			if exp := []string{"abc123"}; !slices.Equal(revoked, exp) {
 				t.Errorf("Expected revoked tokens %q, got %q", exp, revoked)
@@ -629,8 +638,8 @@ func TestLogoutCommandRevokeFails(t *testing.T) {
 			server := testutil.APIServer(t, "POST", "/logout", "", 500)
 
 			term.SetPromptResponses(map[string]string{
-				"Are you sure you want to logout? [y/N]":                "Y",
-				"Do you want to remove saved credentials anyway? [y/N]": tc.answer,
+				"Are you sure you want to logout?":                "Y",
+				"Do you want to remove saved credentials anyway?": tc.answer,
 			})
 
 			cc := testContext(t, term, store, server)
@@ -641,7 +650,7 @@ func TestLogoutCommandRevokeFails(t *testing.T) {
 				t.Errorf("Expected interrupted=%v, got: %v", tc.interrupted, err)
 			}
 
-			expectProblems(t, term, "Error deactivating your old CLI credentials: ")
+			expectProblems(t, term, "! Error deactivating your old CLI credentials: ")
 
 			if wiped := store.User == "" && store.Token == ""; wiped != tc.wiped {
 				t.Errorf("Expected wiped=%v, got store %+v", tc.wiped, store)
@@ -666,8 +675,8 @@ func TestLogoutCommandInterrupted(t *testing.T) {
 
 	ctx.GlobalFlags(cc).Endpoint = server.URL
 	term.SetPromptResponses(map[string]string{
-		"Are you sure you want to logout? [y/N]":                "Y",
-		"Do you want to remove saved credentials anyway? [y/N]": "Y", // Never asked
+		"Are you sure you want to logout?":                "Y",
+		"Do you want to remove saved credentials anyway?": "Y", // Never asked
 	})
 
 	expectInterrupted(t, runCommand(cc, []string{"logout"}))
@@ -731,7 +740,7 @@ func TestLogoutCommandUnconfirmed(t *testing.T) {
 			server := offlineServer(t)
 
 			term.SetPromptResponses(map[string]string{
-				"Are you sure you want to logout? [y/N]": answer,
+				"Are you sure you want to logout?": answer,
 			})
 
 			cc := testContext(t, term, store, server)
@@ -750,10 +759,9 @@ func TestLogoutCommandUnconfirmed(t *testing.T) {
 // Backing out of the email or password prompt, in any way, cancels the login
 func TestInteractiveLoginCancelled(t *testing.T) {
 	for name, prompts := range map[string]map[string]string{
-		"email ABORT":        {"Email: ": "ABORT"},
-		"email INTERRUPT":    {"Email: ": "INTERRUPT"},
-		"email EOF":          {"Email: ": "EOF"},
-		"password INTERRUPT": {"Email: ": "u@example.com", "Password: ": "INTERRUPT"},
+		"email INTERRUPT":    {"Email": "INTERRUPT"},
+		"email EOF":          {"Email": "EOF"},
+		"password INTERRUPT": {"Email": "u@example.com", "Password": "INTERRUPT"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			store := auth.NewMemory("", "", nil)
@@ -767,9 +775,10 @@ func TestInteractiveLoginCancelled(t *testing.T) {
 			term := terminal.NewForTest()
 			term.SetPromptResponses(prompts)
 			cc := testContext(t, term, store, server)
-			if err := runCommandNoErr(cc, []string{"login", "--interactive"}); err != nil {
+			if err := runCommand(cc, []string{"login", "--interactive"}); err != nil {
 				t.Error(err)
 			}
+			expectErrOutput(t, term, credentialsBanner)
 
 			// Other commands report the cancellation
 			term = terminal.NewForTest()
@@ -780,11 +789,29 @@ func TestInteractiveLoginCancelled(t *testing.T) {
 				t.Errorf("Expected 'Login cancelled' error, got: %v", err)
 			}
 
-			expectErrOutput(t, term, "Error: Login cancelled\n")
+			expectErrOutput(t, term, credentialsBanner+"Error: Login cancelled\n")
 
 			expectCredentials(t, store, "", "")
 		})
 	}
+}
+
+// A signal at the email or password prompt ends the command as interrupted,
+// rather than as a login the user backed out of: the context is over, so
+// the prompt gives up, and the command reports the interruption
+func TestInteractiveLoginInterrupted(t *testing.T) {
+	store := auth.NewMemory("", "", nil)
+	term := terminal.NewForTest()
+	term.SetPromptResponses(map[string]string{"Email": "u@example.com"}) // Never asked
+
+	// Any request would be a login without its credentials
+	cc, cancel := context.WithCancel(testContext(t, term, store, offlineServer(t)))
+	defer cancel()
+	term.OnErrOutput(cancel) // At the banner, which comes before the prompts
+
+	expectInterrupted(t, runCommand(cc, []string{"login", "--interactive"}))
+	expectErrOutput(t, term, credentialsBanner+"Cancelled\n")
+	expectCredentials(t, store, "", "")
 }
 
 // pendingLoginServer never approves the browser login: polling blocks
@@ -818,7 +845,7 @@ func TestLoginCommandInterrupted(t *testing.T) {
 		t.Errorf("Expected a prompt exit, took %s", d)
 	}
 
-	expectErrOutput(t, term, "Cancelled\n")
+	expectErrOutput(t, term, browserLogin+"Cancelled\n")
 
 	expectCredentials(t, store, "", "")
 }
@@ -839,14 +866,11 @@ func TestLoginCommandInterruptedOpeningBrowser(t *testing.T) {
 	term.InWrite([]byte("!"))
 
 	// Interrupted at the prompt, which is before the browser is opened
-	term.OnOutput(cancel)
+	term.OnErrOutput(cancel)
 
+	// The browser was opening, and did not fail to open
 	expectInterrupted(t, runCommand(cc, []string{"login"}))
-	if out := string(term.OutBytes()); !strings.Contains(out, "Opening ") || strings.Contains(out, "Failed to open") {
-		t.Errorf("Expected the browser to be opening, not failing, got %q", out)
-	}
-
-	expectErrOutput(t, term, "Cancelled\n")
+	expectErrOutput(t, term, browserPrompt+browserOpening+"Cancelled\n")
 }
 
 // A browser login is asked about for as long as it is pending, which the
@@ -886,7 +910,7 @@ func TestLoginCommandPolling(t *testing.T) {
 			term.InWrite([]byte("!"))
 
 			expectExitStatus(t, term, runCommand(cc, []string{"login"}), tc.exp)
-			expectErrOutput(t, term, tc.stderr)
+			expectErrOutput(t, term, browserLogin+tc.stderr)
 
 			if n := int(polls.Load()); n != len(tc.polls) {
 				t.Errorf("Expected %d polls, got %d", len(tc.polls), n)
@@ -913,7 +937,7 @@ func TestLoginCommandTimeout(t *testing.T) {
 		t.Errorf("Expected api.ErrTimeout, got: %v", err)
 	}
 
-	expectErrOutput(t, term, "Error: Operation timed out. Try again later.\n")
+	expectErrOutput(t, term, browserLogin+"Error: Operation timed out. Try again later.\n")
 	if n := polls.Load(); n != 1 {
 		t.Errorf("Expected 1 poll, got %d", n)
 	}

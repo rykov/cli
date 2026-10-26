@@ -65,7 +65,7 @@ func NewCmdPush() *cobra.Command {
 				}()
 
 				if err == nil {
-					term.Infof("%s- done\n", prefix)
+					term.Successf("%s- done\n", prefix)
 					continue
 				}
 
@@ -76,8 +76,9 @@ func NewCmdPush() *cobra.Command {
 				}
 
 				// Reported by the status line, or else on stderr
-				// when --quiet left that out, and nothing was written
-				if n, _ := term.Infof("%s- %s\n", prefix, pushStatus(err)); n > 0 {
+				// when --quiet leaves that out
+				if term.Mode().ShowInfo {
+					term.Infof("%s- %s\n", prefix, pushStatus(err))
 					fails.record(name, err)
 				} else {
 					fails.add("uploading", name, err)

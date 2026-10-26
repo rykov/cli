@@ -185,7 +185,7 @@ func downloadVersion(cc context.Context, client *api.Client, v *api.VersionFile,
 	}
 
 	// Check if file exists, and validate checksum
-	if err := backupCheckPath(term, fsys, v, path, status); errors.Is(err, backupSkip) {
+	if err := backupCheckPath(cc, term, fsys, v, path, status); errors.Is(err, backupSkip) {
 		return nil // Checksum match => skip download
 	} else if err != nil {
 		return err
@@ -228,7 +228,7 @@ func downloadVersion(cc context.Context, client *api.Client, v *api.VersionFile,
 }
 
 // Validate checksum for file
-func backupCheckPath(term terminal.Terminal, fsys afero.Fs, v *api.VersionFile, path string, status func(string) string) error {
+func backupCheckPath(cc context.Context, term *terminal.UI, fsys afero.Fs, v *api.VersionFile, path string, status func(string) string) error {
 	// Check if file exists, and validate checksum if it does
 	if s, err := fsys.Stat(path); errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -256,9 +256,9 @@ func backupCheckPath(term terminal.Terminal, fsys afero.Fs, v *api.VersionFile, 
 
 	sum := hex.EncodeToString(hash.Sum(nil))
 	if exp := v.Digests.SHA512; exp != sum {
-		term.EPrintf("%s (CHECKSUM MISMATCH)\n", status("❌"))
-		confirm := "Do you want to delete and redownload? [y/N]"
-		if ok, err := term.Confirm(confirm); err != nil {
+		term.EPrintf("%s (CHECKSUM MISMATCH)\n", status("✗"))
+		confirm := "Do you want to delete and redownload?"
+		if ok, err := term.Confirm(cc, confirm, false); err != nil {
 			return err
 		} else if ok {
 			file.Close()
@@ -269,6 +269,6 @@ func backupCheckPath(term terminal.Terminal, fsys afero.Fs, v *api.VersionFile, 
 		return errors.New("Checksum failed")
 	}
 
-	term.Infof("%s\n", status("✅"))
+	term.Infof("%s\n", status("✔"))
 	return backupSkip
 }

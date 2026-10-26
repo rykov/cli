@@ -5,9 +5,6 @@ import (
 	"github.com/gemfury/cli/internal/ctx"
 	"github.com/gemfury/cli/pkg/terminal"
 	"github.com/spf13/cobra"
-
-	"fmt"
-	"text/tabwriter"
 )
 
 // collaboratorArgs is the Args check for commands taking EMAIL...
@@ -39,16 +36,13 @@ func listMembers(cmd *cobra.Command, args []string) error {
 	}
 
 	members, err := fetchAll[*api.Member](cc, c.Members)
-	return printListing(cmd, members, err, "No members found for this account", func(term terminal.Terminal) {
+	return printListing(cmd, members, err, "No members found for this account", func(term *terminal.UI) {
 		term.Infof("*** Collaborators ***\n")
-		w := tabwriter.NewWriter(term.IOOut(), 0, 0, 2, ' ', 0)
-		fmt.Fprintf(w, "name\trole\n")
-
+		rows := [][]string{{"name", "role"}}
 		for _, m := range members {
-			fmt.Fprintf(w, "%s\t%s\n", m.Name, m.Role)
+			rows = append(rows, []string{m.Name, m.Role})
 		}
-
-		w.Flush()
+		printTable(term.IOOut(), rows)
 	})
 }
 
@@ -81,7 +75,7 @@ func NewCmdSharingAdd() *cobra.Command {
 					continue
 				}
 
-				term.Infof("Invited %q as a collaborator\n", name)
+				term.Successf("Invited %q as a collaborator\n", name)
 			}
 
 			return fails.err()
@@ -120,7 +114,7 @@ func NewCmdSharingRemove() *cobra.Command {
 					continue
 				}
 
-				term.Infof("Removed %q as a collaborator\n", name)
+				term.Successf("Removed %q as a collaborator\n", name)
 			}
 
 			return fails.err()
@@ -147,15 +141,12 @@ can be given to --account.`,
 			}
 
 			members, err := fetchAll[*api.Member](cc, c.Collaborations)
-			return printListing(cmd, members, err, "No collaborations found for this account", func(term terminal.Terminal) {
-				w := tabwriter.NewWriter(term.IOOut(), 0, 0, 2, ' ', 0)
-				fmt.Fprintf(w, "name\tkind\trole\n")
-
+			return printListing(cmd, members, err, "No collaborations found for this account", func(term *terminal.UI) {
+				rows := [][]string{{"name", "kind", "role"}}
 				for _, m := range members {
-					fmt.Fprintf(w, "%s\t%s\t%s\n", m.Name, m.Type, m.Role)
+					rows = append(rows, []string{m.Name, m.Type, m.Role})
 				}
-
-				w.Flush()
+				printTable(term.IOOut(), rows)
 			})
 		},
 	})

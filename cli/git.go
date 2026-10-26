@@ -61,8 +61,8 @@ func NewCmdGitDestroy() *cobra.Command {
 			}
 
 			if !forceFlag {
-				confirm := fmt.Sprintf("Are you sure you want to %s the %s repository? [y/N]", action, args[0])
-				if ok, err := term.Confirm(confirm); !ok {
+				confirm := fmt.Sprintf("Are you sure you want to %s the %s repository?", action, args[0])
+				if ok, err := term.Confirm(cc, confirm, false); !ok {
 					return err
 				}
 			}
@@ -77,7 +77,7 @@ func NewCmdGitDestroy() *cobra.Command {
 				return about("Repository", args[0], err)
 			}
 
-			term.Infof("%s %s repository\n", done, args[0])
+			term.Successf("%s %s repository\n", done, args[0])
 			return nil
 		},
 	}
@@ -110,7 +110,7 @@ func NewCmdGitRename() *cobra.Command {
 				return about("Repository", args[0], err)
 			}
 
-			term.Infof("Renamed %s repository to %s\n", args[0], args[1])
+			term.Successf("Renamed %s repository to %s\n", args[0], args[1])
 			return nil
 		},
 	}
@@ -182,7 +182,7 @@ func listRepos(cmd *cobra.Command, args []string) error {
 	}
 
 	repos, err := fetchAll[*api.GitRepo](cc, c.GitList)
-	return printListing(cmd, repos, err, "No Git repositories found in this account", func(term terminal.Terminal) {
+	return printListing(cmd, repos, err, "No Git repositories found in this account", func(term *terminal.UI) {
 		term.Infof("\n*** GEMFURY GIT REPOS ***\n\n")
 		for _, r := range repos {
 			term.Printf("%s\n", r.Name)

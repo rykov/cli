@@ -136,7 +136,7 @@ func TestAuthTokenNotGiven(t *testing.T) {
 			t.Run(args[0]+" "+name, func(t *testing.T) {
 				store := auth.NewMemory("old@example.com", "old-token", nil)
 				term := terminal.NewForTest()
-				term.SetPromptResponses(map[string]string{"API token: ": tc.answer})
+				term.SetPromptResponses(map[string]string{"API token": tc.answer})
 
 				cc := testContext(t, term, store, offlineServer(t))
 				err := runCommand(cc, args)

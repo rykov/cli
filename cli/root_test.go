@@ -105,7 +105,7 @@ func runCommandNoErr(cc context.Context, args []string) error {
 		return fmt.Errorf("Command error: %w", err)
 	}
 
-	term := ctx.TestTerm(cc)
+	term := ctx.Terminal(cc)
 	if errStr := string(term.ErrBytes()); errStr != "" {
 		return fmt.Errorf("Error output: %q", errStr)
 	}
@@ -127,7 +127,7 @@ func helpOutputIn(t *testing.T, cc context.Context, args ...string) string {
 	if err := runCommandNoErr(cc, args); err != nil {
 		t.Fatal(err)
 	}
-	return string(ctx.TestTerm(cc).OutBytes())
+	return string(ctx.Terminal(cc).OutBytes())
 }
 
 // serving is a server to start for a test, which
@@ -157,7 +157,7 @@ func allCommands(cmd *cobra.Command) []*cobra.Command {
 }
 
 // testContext builds a command context with both API endpoints pointed at server
-func testContext(t *testing.T, term terminal.Terminal, store auth.Store, server *httptest.Server) context.Context {
+func testContext(t *testing.T, term *terminal.UI, store auth.Store, server *httptest.Server) context.Context {
 	t.Helper()
 	cc := cli.TestContext(t.Context(), term, store)
 
@@ -206,7 +206,7 @@ func expectSummaryError(t *testing.T, err, cause error, summary string) {
 }
 
 // expectProblems asserts that stderr begins with the given lines, in order
-func expectProblems(t *testing.T, term terminal.TestTerm, lines ...string) {
+func expectProblems(t *testing.T, term *terminal.UI, lines ...string) {
 	t.Helper()
 	errStr := string(term.ErrBytes())
 	if exp := strings.Join(lines, ""); !strings.HasPrefix(errStr, exp) {
@@ -215,7 +215,7 @@ func expectProblems(t *testing.T, term terminal.TestTerm, lines ...string) {
 }
 
 // expectOutput asserts exactly what went to stdout and to stderr
-func expectOutput(t *testing.T, term terminal.TestTerm, stdout, stderr string) {
+func expectOutput(t *testing.T, term *terminal.UI, stdout, stderr string) {
 	t.Helper()
 	if out := string(term.OutBytes()); out != stdout {
 		t.Errorf("Output should be %q, got %q", stdout, out)
@@ -224,7 +224,7 @@ func expectOutput(t *testing.T, term terminal.TestTerm, stdout, stderr string) {
 }
 
 // expectErrOutput asserts exactly what went to stderr, whatever went to stdout
-func expectErrOutput(t *testing.T, term terminal.TestTerm, stderr string) {
+func expectErrOutput(t *testing.T, term *terminal.UI, stderr string) {
 	t.Helper()
 	if errOut := string(term.ErrBytes()); errOut != stderr {
 		t.Errorf("Error output should be %q, got %q", stderr, errOut)
@@ -232,7 +232,7 @@ func expectErrOutput(t *testing.T, term terminal.TestTerm, stderr string) {
 }
 
 // expectExitStatus asserts the exit status for the error of a command
-func expectExitStatus(t *testing.T, term terminal.TestTerm, err error, exp int) {
+func expectExitStatus(t *testing.T, term *terminal.UI, err error, exp int) {
 	t.Helper()
 	if got := cli.ExitStatus(err); got != exp {
 		t.Errorf("Expected exit status %d, got %d with %q", exp, got, term.ErrBytes())
@@ -250,7 +250,7 @@ func expectCredentials(t *testing.T, store auth.Store, user, token string) {
 // expectOutputLines asserts that stdout holds the given adjacent lines and no
 // other occurrence of marker. Stdout is not matched exactly because it may
 // also hold other progress or status lines.
-func expectOutputLines(t *testing.T, term terminal.TestTerm, marker string, lines ...string) {
+func expectOutputLines(t *testing.T, term *terminal.UI, marker string, lines ...string) {
 	t.Helper()
 	out := string(term.OutBytes())
 	if exp := strings.Join(lines, ""); !strings.Contains(out, exp) || strings.Count(out, marker) != len(lines) {
@@ -399,7 +399,7 @@ func expectUsageError(t *testing.T, args []string, msg string) {
 }
 
 // expectUsageErrorAt is expectUsageError at the given terminal
-func expectUsageErrorAt(t *testing.T, term terminal.TestTerm, args []string, msg string) {
+func expectUsageErrorAt(t *testing.T, term *terminal.UI, args []string, msg string) {
 	t.Helper()
 	cc := testContext(t, term, auth.NewMemory("", "", nil), offlineServer(t))
 	expectUsageErrorIn(t, cc, args, msg)
@@ -408,7 +408,7 @@ func expectUsageErrorAt(t *testing.T, term terminal.TestTerm, args []string, msg
 // expectUsageErrorIn is expectUsageError in the given command context
 func expectUsageErrorIn(t *testing.T, cc context.Context, args []string, msg string) {
 	t.Helper()
-	term := ctx.TestTerm(cc)
+	term := ctx.Terminal(cc)
 
 	err := runCommand(cc, args)
 	if !cli.IsUsageError(err) {
@@ -449,14 +449,15 @@ func expectInterrupted(t *testing.T, err error) {
 	}
 }
 
-// unconfirmed are the ways of not confirming a "y/N" question,
+// unconfirmed are the ways of not confirming a yes/no question,
 // and whether each interrupts the command rather than declines
 var unconfirmed = map[string]bool{"ABORT": false, "INTERRUPT": true, "EOF": true}
 
 // expectUnconfirmed asserts the outcome of a command whose confirmation was
 // not given: either declined, which is no error, or left unanswered, which
-// interrupts the command. Stdout is not checked, as it may hold the question.
-func expectUnconfirmed(t *testing.T, term terminal.TestTerm, err error, interrupted bool) {
+// interrupts the command. Stdout is not checked, as it may hold what was
+// shown before the question, such as the files that yank would remove.
+func expectUnconfirmed(t *testing.T, term *terminal.UI, err error, interrupted bool) {
 	t.Helper()
 	if interrupted {
 		expectInterrupted(t, err)
@@ -546,7 +547,7 @@ func TestMultiItemCommandInterruptedBetweenItems(t *testing.T) {
 	term.OnOutput(cancel)
 
 	expectInterrupted(t, runCommand(cc, []string{"push", samplePackagePath(), samplePackagePath()}))
-	expectOutput(t, term, "Uploading sample.txt - done\n", "Cancelled\n")
+	expectOutput(t, term, "✔ Uploading sample.txt - done\n", "Cancelled\n")
 }
 
 // mutableServer has what yank, git destroy, and logout would change,
@@ -568,7 +569,7 @@ func mutableServer(t *testing.T, mutations *atomic.Int32) *httptest.Server {
 	})
 }
 
-// With --yes, every "y/N" question is answered without being asked.
+// With --yes, every yes/no question is answered without being asked.
 // No answers are given to the terminal, so a question would fail the command.
 func TestConfirmationByFlag(t *testing.T) {
 	for name, tc := range map[string]struct {

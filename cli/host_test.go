@@ -51,7 +51,7 @@ func TestHostSession(t *testing.T) {
 	if token != "host-token" || account != "session-org" {
 		t.Errorf("Expected the token of the store and the account of the session, got %q and %q", token, account)
 	}
-	if exp := "Uploading pkg-1.0.0.gem - done\n"; out.String() != exp || errOut.Len() != 0 {
+	if exp := "✔ Uploading pkg-1.0.0.gem - done\n"; out.String() != exp || errOut.Len() != 0 {
 		t.Errorf("Expected %q on the output of the session and nothing else, got %q and %q", exp, out.String(), errOut.String())
 	}
 }

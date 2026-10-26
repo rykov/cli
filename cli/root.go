@@ -2,13 +2,11 @@ package cli
 
 import (
 	"github.com/gemfury/cli/internal/ctx"
-	"github.com/gemfury/cli/pkg/terminal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
 	"context"
 	"errors"
-	"fmt"
 )
 
 // NewRootCommand creates the root Cobra CLI command and context
@@ -85,14 +83,15 @@ Exit status:
 	flags := ctx.GlobalFlags(cc)
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-		// Flags are parsed by now: questions are answered as they ask.
-		// With --json none is asked, as it would be on stdout with the result.
+		// Flags are parsed by now: the UI shows and asks as they say. With
+		// --json nothing else is shown, as it would be on stdout with the
+		// result, and nothing is asked, as a program reads it.
 		cc := cmd.Context()
-		asJSON := printsJSON(cmd)
-		flags.Quiet = flags.Quiet || asJSON
-		term := terminal.Unattended(ctx.Terminal(cc), flags.Yes, flags.NoInput || asJSON)
-		term = terminal.Quiet(term, flags.Quiet, flags.NoProgress)
-		cmd.SetContext(ctx.WithTerminal(cc, term))
+		opts := flags.Options
+		if printsJSON(cmd) {
+			opts.Quiet, opts.NoInput = true, true
+		}
+		ctx.Terminal(cc).SetOptions(opts)
 
 		// Ensure authentication for all commands (see skipsAuth for exceptions)
 		return preRunCheckAuthentication(cmd, args)
@@ -140,22 +139,22 @@ func Execute(cc context.Context, rootCmd *cobra.Command) error {
 		return nil
 	}
 
-	errOut := rootCmd.ErrOrStderr()
+	term := ctx.Terminal(cc)
 
 	// An interrupted command has nothing to report but the interruption
 	if errors.Is(err, context.Canceled) {
-		fmt.Fprintln(errOut, "Cancelled")
+		term.EPrintf("Cancelled\n")
 		return err
 	}
 
-	fmt.Fprintf(errOut, "Error: %s\n", err)
+	term.Errorf("%s\n", err)
 
 	if IsUsageError(err) {
-		fmt.Fprint(errOut, cmd.UsageString())
+		term.EPrintf("%s", cmd.UsageString())
 	} else if cmd == rootCmd {
 		// Unknown subcommand, or other failure to dispatch: a usage
 		// error, though with a hint instead of the usage of the root
-		fmt.Fprintf(errOut, "Run '%s --help' for usage.\n", rootCmd.CommandPath())
+		term.Hintf("Run '%s --help' for usage.\n", rootCmd.CommandPath())
 		return asUsageError(err)
 	}
 

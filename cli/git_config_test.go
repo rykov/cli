@@ -110,7 +110,7 @@ func TestGitConfigSetCommandSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	exp := "Updated repo-name repository config"
+	exp := "✔ Updated repo-name repository config"
 	if outStr := compactString(term.OutBytes()); outStr != exp {
 		t.Errorf("Expected output to include %q, got %q", exp, outStr)
 	}
@@ -144,7 +144,7 @@ func TestGitConfigUnsetCommandSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	exp := "Updated repo-name repository config"
+	exp := "✔ Updated repo-name repository config"
 	if outStr := compactString(term.OutBytes()); outStr != exp {
 		t.Errorf("Expected output to include %q, got %q", exp, outStr)
 	}

@@ -75,8 +75,8 @@ KIND:PACKAGE@VERSION. The kinds are:
 
 			if !forceFlag {
 				termPrintVersions(term, versions)
-				confirm := "Are you sure you want to delete these files? [y/N]"
-				if ok, err := term.Confirm(confirm); !ok {
+				confirm := "Are you sure you want to delete these files?"
+				if ok, err := term.Confirm(cc, confirm, false); !ok {
 					return err
 				}
 			}
@@ -91,7 +91,7 @@ KIND:PACKAGE@VERSION. The kinds are:
 					removals.add("removing", v.Filename, err)
 					continue
 				}
-				term.Infof("Removed %q\n", v.Filename)
+				term.Successf("Removed %q\n", v.Filename)
 			}
 
 			return removals.err()

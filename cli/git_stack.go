@@ -100,6 +100,6 @@ func gitStackUpdate(cmd *cobra.Command, repo string, newStack string) error {
 		return about("Repository", repo, err)
 	}
 
-	term.Infof("Updated %s repository build stack\n", repo)
+	term.Successf("Updated %s repository build stack\n", repo)
 	return nil
 }

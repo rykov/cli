@@ -72,7 +72,7 @@ func TestPushCommandSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	exp := fmt.Sprintf("Uploading %s - done", filepath.Base(packagePath))
+	exp := fmt.Sprintf("✔ Uploading %s - done", filepath.Base(packagePath))
 	if outStr := compactString(term.OutBytes()); !strings.HasSuffix(outStr, exp) {
 		t.Errorf("Expected output to include %q, got %q", exp, outStr)
 	} else if v := publicVal.Load(); v != "" {
@@ -85,7 +85,7 @@ func TestPushCommandSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	exp = fmt.Sprintf("Uploading %s - done", filepath.Base(packagePath))
+	exp = fmt.Sprintf("✔ Uploading %s - done", filepath.Base(packagePath))
 	if outStr := compactString(term.OutBytes()); !strings.HasSuffix(outStr, exp) {
 		t.Errorf("Expected output to include %q, got %q", exp, outStr)
 	} else if v := publicVal.Load(); v != "true" {
@@ -121,7 +121,7 @@ func TestPushCommandNotFound(t *testing.T) {
 	const notFound = "Doesn't look like this exists\n"
 	const status = "Uploading sample.txt - " + notFound
 	const failure = "Error: File \"sample.txt\": Server response: " + notFound
-	const problem = "Problem uploading \"sample.txt\": Server response: " + notFound
+	const problem = "✗ Problem uploading \"sample.txt\": Server response: " + notFound
 	const several = "Error: 2 of 2 uploads failed\n"
 	file := samplePackagePath()
 
@@ -236,7 +236,7 @@ func TestPushCommandPartialFailure(t *testing.T) {
 	expectSummaryError(t, err, os.ErrNotExist, "1 of 2 uploads failed")
 
 	expectOutput(t, term,
-		"Uploading 100%d.gem - done\nUploading missing.gem - file not found\n",
+		"✔ Uploading 100%d.gem - done\nUploading missing.gem - file not found\n",
 		"Error: 1 of 2 uploads failed\n")
 }
 
@@ -291,7 +291,7 @@ func TestPushCommandFS(t *testing.T) {
 	expectSummaryError(t, err, os.ErrNotExist, "1 of 2 uploads failed")
 
 	expectOutput(t, term,
-		"Uploading pkg-1.0.0.gem - done\nUploading sample.txt - file not found\n",
+		"✔ Uploading pkg-1.0.0.gem - done\nUploading sample.txt - file not found\n",
 		"Error: 1 of 2 uploads failed\n")
 }
 

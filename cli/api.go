@@ -6,7 +6,6 @@ import (
 	"github.com/gemfury/cli/internal/ctx"
 	"github.com/gemfury/cli/pkg/auth"
 	"github.com/gemfury/cli/pkg/terminal"
-	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 
 	"bufio"
@@ -63,8 +62,7 @@ func newAPIClientWithToken(cc context.Context, token string) (*api.Client, error
 	}
 
 	// A notice of a wait is not a warning, so --quiet hides it; EPrintf alone would not
-	if !flags.Quiet {
-		term := ctx.Terminal(cc)
+	if term := ctx.Terminal(cc); term.Mode().ShowInfo {
 		c.OnRetry = func(notice string) { term.EPrintf("%s\n", notice) }
 	}
 
@@ -86,7 +84,7 @@ func contextAuthToken(cc context.Context) (string, error) {
 func inlineAuthToken(cc context.Context) (string, error) {
 	flags := ctx.GlobalFlags(cc)
 	if flags.AuthToken == "-" {
-		token, err := readToken(ctx.Terminal(cc))
+		token, err := readToken(cc)
 		if err != nil {
 			return "", err
 		}
@@ -97,16 +95,10 @@ func inlineAuthToken(cc context.Context) (string, error) {
 
 // readToken reads the token for --api-token -: asked for, masked, when
 // there is a user to ask, or else the first line of stdin
-func readToken(term terminal.Terminal) (string, error) {
-	var token string
-	var err error
-
-	if term.IsInteractive() {
-		token, err = term.RunPrompt(&promptui.Prompt{Label: "API token: ", Mask: '*'})
-		if errors.Is(err, promptui.ErrInterrupt) || errors.Is(err, promptui.ErrEOF) {
-			err = context.Canceled // Ctrl-C or Ctrl-D interrupts the command, as at a y/N question
-		}
-	} else {
+func readToken(cc context.Context) (string, error) {
+	term := ctx.Terminal(cc)
+	token, err := term.Ask(cc, terminal.Prompt{Label: "API token", Secret: true})
+	if errors.Is(err, terminal.ErrNoInput) {
 		in := bufio.NewScanner(term.IOIn())
 		in.Scan() // Nothing to read leaves the token empty, which is refused below
 		token, err = in.Text(), in.Err()
@@ -248,11 +240,13 @@ func ensureAuthenticated(cmd *cobra.Command, interactive bool) (*api.AccountResp
 		resp, err = interactiveLogin(cmd)
 	}
 
-	// Backing out of a login prompt, which includes Ctrl-C and Ctrl-D
+	// Backing out of a prompt cancels the login: with "q" before the browser
+	// opens, or with Ctrl-C at an email or password prompt, where it is a
+	// key, so the context is live. A signal ends the context, and the
+	// command with it, as interrupted.
 	switch {
-	case errors.Is(err, promptui.ErrAbort),
-		errors.Is(err, promptui.ErrInterrupt),
-		errors.Is(err, promptui.ErrEOF):
+	case errors.Is(err, terminal.ErrAborted),
+		errors.Is(err, context.Canceled) && cc.Err() == nil:
 		return nil, errLoginCancelled
 	case err != nil:
 		return nil, err
@@ -285,7 +279,7 @@ func saveSession(cc context.Context, email, token string) error {
 			term.Infof("Credentials are saved in %s, as the system keychain is not available\n", path)
 		}
 		if setup := fb.GitSetup(); len(setup) > 0 {
-			term.EPrintf("Git is not set to ask this CLI for credentials, as its configuration could not be changed. To set it by hand:\n  %s\n", strings.Join(setup, "\n  "))
+			term.Warnf("Git is not set to ask this CLI for credentials, as its configuration could not be changed. To set it by hand:\n  %s\n", strings.Join(setup, "\n  "))
 		}
 	}
 
@@ -318,17 +312,19 @@ func browserLogin(cmd *cobra.Command) (*api.LoginResponse, error) {
 
 	// Everything is ready. Confirm opening browser to login
 	anyKey := "Press any key to login via the browser or q to exit: "
-	if err := terminal.PromptAnyKeyOrQuit(term, anyKey); err != nil {
+	if err := term.PressAnyKey(anyKey); err != nil {
 		return nil, err
 	}
 
-	// Attempt to open the browser to create CLI token
-	term.Printf("Opening %s\n", createResp.BrowserURL)
+	// Attempt to open the browser to create CLI token. The login's lines are
+	// on stderr, as its prompts are: any command may start it, with stdout
+	// piped to where its result is read.
+	term.EPrintf("Opening %s\n", createResp.BrowserURL)
 	if ok := term.OpenBrowser(cc, createResp.BrowserURL); !ok {
 		if err := cc.Err(); err != nil {
 			return nil, err // Interrupted, rather than failed
 		}
-		term.Printf("Failed to open browser. You can continue CLI login by manually opening the URL\n")
+		term.EPrintf("Failed to open browser. You can continue CLI login by manually opening the URL\n")
 	}
 
 	// Start/end spinner while waiting for browser auth
@@ -379,19 +375,15 @@ func browserLogin(cmd *cobra.Command) (*api.LoginResponse, error) {
 // interactiveLogin is an email/password authentication via terminal
 func interactiveLogin(cmd *cobra.Command) (*api.LoginResponse, error) {
 	cc := cmd.Context()
-
-	// Interactive login
 	term := ctx.Terminal(cc)
-	term.Printf("Please enter your Gemfury credentials.\n")
+	term.EPrintf("Please enter your Gemfury credentials.\n") // On stderr, as browserLogin says
 
-	ePrompt := promptui.Prompt{Label: "Email: "}
-	eResult, err := term.RunPrompt(&ePrompt)
+	eResult, err := term.Ask(cc, terminal.Prompt{Label: "Email"})
 	if err != nil {
 		return nil, err
 	}
 
-	pPrompt := promptui.Prompt{Label: "Password: ", Mask: '*'}
-	pResult, err := term.RunPrompt(&pPrompt)
+	pResult, err := term.Ask(cc, terminal.Prompt{Label: "Password", Secret: true})
 	if err != nil {
 		return nil, err
 	}

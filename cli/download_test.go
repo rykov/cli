@@ -28,7 +28,7 @@ const downloadContent = "package-bytes-0123456789"
 const staleContent = "stale-bytes"
 
 // How the stale file of foo@1.2.3 is warned about, on stderr
-const staleWarning = "ver_foo         ❌ foo-1.2.3.tgz (CHECKSUM MISMATCH)\n"
+const staleWarning = "ver_foo         ✗ foo-1.2.3.tgz (CHECKSUM MISMATCH)\n"
 
 // Version JSON whose download_url points back at the test server.
 // The host is only known per-request, so it is rendered by the handler.
@@ -301,7 +301,7 @@ func testBackupSuccess(t *testing.T, fsys afero.Fs) string {
 		t.Errorf("Expected no new downloads on second run, got %d total", downloads)
 	}
 
-	if outStr := string(term.OutBytes()); strings.Count(outStr, "✅") != 2 {
+	if outStr := string(term.OutBytes()); strings.Count(outStr, "✔") != 2 {
 		t.Errorf("Expected 2 checksum-verified lines, got %q", outStr)
 	}
 
@@ -337,7 +337,7 @@ func TestBackupCommandForbidden(t *testing.T) {
 // question unanswered interrupts the command, the next item unattempted.
 // With --yes, the question is not asked.
 func TestDownloadCommandChecksumMismatch(t *testing.T) {
-	const declined = "Problem downloading \"foo@1.2.3\": Checksum failed\nError: 1 of 2 downloads failed\n"
+	const declined = "✗ Problem downloading \"foo@1.2.3\": Checksum failed\nError: 1 of 2 downloads failed\n"
 
 	for answer, tc := range map[string]struct {
 		foo, bar string // Content of each file afterwards
@@ -360,7 +360,7 @@ func TestDownloadCommandChecksumMismatch(t *testing.T) {
 				args = append(args, answer)
 			} else {
 				term.SetPromptResponses(map[string]string{
-					"Do you want to delete and redownload? [y/N]": answer,
+					"Do you want to delete and redownload?": answer,
 				})
 			}
 
@@ -460,7 +460,7 @@ func TestDownloadCommandFailures(t *testing.T) {
 	err := runCommand(cc, []string{"beta", "download", "foo@1.2.3", "bar@1.2.3"})
 	expectSummaryError(t, err, api.ErrNotFound, "2 of 2 downloads failed")
 	expectProblems(t, term,
-		"Problem downloading \"foo@1.2.3\": Doesn't look like this exists\n",
-		"Problem downloading \"bar@1.2.3\": Doesn't look like this exists\n",
+		"✗ Problem downloading \"foo@1.2.3\": Doesn't look like this exists\n",
+		"✗ Problem downloading \"bar@1.2.3\": Doesn't look like this exists\n",
 	)
 }

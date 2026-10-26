@@ -44,7 +44,7 @@ func fetchAll[T any, R api.Paged[T]](cc context.Context, fetch func(context.Cont
 // render, or the empty message when there is nothing to print. An error
 // is returned as it is: with --json nothing is printed then, and
 // otherwise what was listed before it.
-func printListing[T any](cmd *cobra.Command, items []T, err error, empty string, render func(term terminal.Terminal)) error {
+func printListing[T any](cmd *cobra.Command, items []T, err error, empty string, render func(term *terminal.UI)) error {
 	term := ctx.Terminal(cmd.Context())
 	if printsJSON(cmd) {
 		if err != nil {

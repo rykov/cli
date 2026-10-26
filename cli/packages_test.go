@@ -73,6 +73,25 @@ func TestPackagesCommandSuccess(t *testing.T) {
 	}
 }
 
+// A name of wide runes, which take two cells each at a terminal, keeps the
+// columns after it aligned with those of the header
+func TestPackagesCommandWideName(t *testing.T) {
+	store := auth.NewMemory("user", "abc123", nil)
+	term := terminal.NewForTest()
+
+	body := `[{"id": "pkg_w1", "name": "日本語", "kind_key": "js", "private": true, "release_version": {"version": "1.0.0"}}]`
+	server := testutil.APIServer(t, "GET", "/packages", body, 200)
+	cc := testContext(t, term, store, server)
+
+	if err := runCommandNoErr(cc, []string{"packages", "--quiet"}); err != nil {
+		t.Fatal(err)
+	}
+
+	exp := "name    kind  version  privacy\n" +
+		"日本語  js    1.0.0    private\n"
+	expectOutput(t, term, exp, "")
+}
+
 func TestPackagesCommandUnauthorized(t *testing.T) {
 	server := testutil.APIServer(t, "GET", "/packages", "[]", 200)
 	testCommandLoginPreCheck(t, []string{"packages"}, server)

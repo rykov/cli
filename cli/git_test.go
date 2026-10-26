@@ -123,7 +123,7 @@ func TestGitRenameCommandSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	exp := "Renamed repo-name repository to new-name\n"
+	exp := "✔ Renamed repo-name repository to new-name\n"
 	if outStr := string(term.OutBytes()); !strings.HasSuffix(outStr, exp) {
 		t.Errorf("Expected output to include %q, got %q", exp, outStr)
 	}
@@ -144,8 +144,8 @@ func TestGitRenameCommandForbidden(t *testing.T) {
 // ==== GIT DESTROY ====
 
 const (
-	confirmRemove = "Are you sure you want to remove the repo-name repository? [y/N]"
-	confirmReset  = "Are you sure you want to reset the repo-name repository? [y/N]"
+	confirmRemove = "Are you sure you want to remove the repo-name repository?"
+	confirmReset  = "Are you sure you want to reset the repo-name repository?"
 )
 
 // A repository is removed, or reset, once that is confirmed or forced
@@ -156,11 +156,11 @@ func TestGitDestroyCommandSuccess(t *testing.T) {
 		reset   string // Expected in the URL query
 		stdout  string
 	}{
-		"destroy":         {[]string{"git", "destroy", "repo-name"}, confirmRemove, "", "Removed repo-name repository\n"},
-		"destroy --force": {[]string{"git", "destroy", "--force", "repo-name"}, "", "", "Removed repo-name repository\n"},
-		"--reset-only":    {[]string{"git", "destroy", "--reset-only", "repo-name"}, confirmReset, "1", "Reset repo-name repository\n"},
-		"reset":           {[]string{"git", "reset", "repo-name"}, confirmReset, "1", "Reset repo-name repository\n"},
-		"reset -f":        {[]string{"git", "reset", "-f", "repo-name"}, "", "1", "Reset repo-name repository\n"},
+		"destroy":         {[]string{"git", "destroy", "repo-name"}, confirmRemove, "", "✔ Removed repo-name repository\n"},
+		"destroy --force": {[]string{"git", "destroy", "--force", "repo-name"}, "", "", "✔ Removed repo-name repository\n"},
+		"--reset-only":    {[]string{"git", "destroy", "--reset-only", "repo-name"}, confirmReset, "1", "✔ Reset repo-name repository\n"},
+		"reset":           {[]string{"git", "reset", "repo-name"}, confirmReset, "1", "✔ Reset repo-name repository\n"},
+		"reset -f":        {[]string{"git", "reset", "-f", "repo-name"}, "", "1", "✔ Reset repo-name repository\n"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			store := auth.NewMemory("user", "abc123", nil)

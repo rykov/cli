@@ -18,7 +18,7 @@ import (
 // ==== YANK ====
 
 // What "yank" asks before it removes anything
-const yankConfirm = "Are you sure you want to delete these files? [y/N]"
+const yankConfirm = "Are you sure you want to delete these files?"
 
 func TestYankCommandOnePackage(t *testing.T) {
 	store := auth.NewMemory("user", "abc123", nil)
@@ -56,7 +56,7 @@ func TestYankCommandOnePackage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	exp := "Removed \"foo-1.2.3.tgz\"\nRemoved \"foo-3.2.1.tgz\"\n"
+	exp := "✔ Removed \"foo-1.2.3.tgz\"\n✔ Removed \"foo-3.2.1.tgz\"\n"
 	if outStr := string(term.OutBytes()); !strings.HasSuffix(outStr, exp) {
 		t.Errorf("Expected output to include %q, got %q", exp, outStr)
 	}
@@ -70,7 +70,7 @@ func TestYankCommandOnePackage(t *testing.T) {
 	}
 
 	// Removing using KIND:PACKAGE@VERSION
-	exp = "Removed \"foo-1.2.3.tgz\"\n" // JS kind returns one Version
+	exp = "✔ Removed \"foo-1.2.3.tgz\"\n" // JS kind returns one Version
 	err = runCommandNoErr(cc, []string{"yank", "js:foo@0.0.1", "--force"})
 	if err != nil {
 		t.Fatal(err)
@@ -112,7 +112,7 @@ func TestYankCommandMultiPackage(t *testing.T) {
 	flags.Endpoint = server.URL
 
 	// Expected successful output
-	exp := "Removed \"foo-1.2.3.tgz\"\nRemoved \"foo-3.2.1.tgz\"\n"
+	exp := "✔ Removed \"foo-1.2.3.tgz\"\n✔ Removed \"foo-3.2.1.tgz\"\n"
 
 	// When nothing is found, we expect "nothing found" error message
 	expNone := "No matching versions found\n"
@@ -227,8 +227,8 @@ func TestYankCommandLookupFailures(t *testing.T) {
 	err := runCommand(cc, []string{"yank", "foo@1.0", "@scope/bar@1.0", "--force"})
 	expectSummaryError(t, err, api.ErrNotFound, "2 of 2 lookups failed")
 	expectOutput(t, term, "", ""+
-		"Problem looking up \"foo@1.0\": Doesn't look like this exists\n"+
-		"Problem looking up \"@scope/bar@1.0\": Doesn't look like this exists\n"+
+		"✗ Problem looking up \"foo@1.0\": Doesn't look like this exists\n"+
+		"✗ Problem looking up \"@scope/bar@1.0\": Doesn't look like this exists\n"+
 		"Error: 2 of 2 lookups failed\n")
 }
 
@@ -287,6 +287,6 @@ func TestYankCommandPartialRemovalFailure(t *testing.T) {
 	err := runCommand(cc, []string{"yank", "foo@0.0.1", "--force"})
 	expectSummaryError(t, err, api.ErrNotFound, "1 of 2 removals failed")
 
-	expectOutputLines(t, term, "Removed ", "Removed \"foo-1.2.3.tgz\"\n")
-	expectProblems(t, term, "Problem removing \"foo-3.2.1.tgz\": Doesn't look like this exists\n")
+	expectOutputLines(t, term, "Removed ", "✔ Removed \"foo-1.2.3.tgz\"\n")
+	expectProblems(t, term, "✗ Problem removing \"foo-3.2.1.tgz\": Doesn't look like this exists\n")
 }

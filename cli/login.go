@@ -37,16 +37,16 @@ func NewCmdLogout() *cobra.Command {
 				return nil
 			}
 
-			if ok, err := term.Confirm("Are you sure you want to logout? [y/N]"); !ok {
+			if ok, err := term.Confirm(cc, "Are you sure you want to logout?", false); !ok {
 				return err
 			}
 
-			wipeAnyway := "Do you want to remove saved credentials anyway? [y/N]"
+			wipeAnyway := "Do you want to remove saved credentials anyway?"
 			if err := logoutCurrent(cc, token, wipeAnyway); err != nil {
 				return err
 			}
 
-			term.Infof("You have been logged out\n")
+			term.Successf("You have been logged out\n")
 			return nil
 		},
 	}
@@ -69,8 +69,8 @@ func logoutCurrent(cc context.Context, token string, onFailConfirm string) error
 		return err // Interrupted, rather than refused
 	} else if err != nil {
 		term := ctx.Terminal(cc)
-		term.EPrintf("Error deactivating your old CLI credentials: %s\n", err)
-		if ok, promptErr := term.Confirm(onFailConfirm); promptErr != nil {
+		term.Warnf("Error deactivating your old CLI credentials: %s\n", err)
+		if ok, promptErr := term.Confirm(cc, onFailConfirm, false); promptErr != nil {
 			return promptErr
 		} else if !ok {
 			return err
@@ -85,7 +85,7 @@ func logoutCurrent(cc context.Context, token string, onFailConfirm string) error
 // it is left alone, as keep is to stay valid
 func logoutSaved(cc context.Context, keep string) error {
 	if _, token, err := ctx.Auth(cc).Auth(); err == nil && token != "" && token != keep {
-		confirm := "Do you want to ignore & continue with your login? [y/N]"
+		confirm := "Do you want to ignore & continue with your login?"
 		return logoutCurrent(cc, token, confirm)
 	}
 	return nil
@@ -108,7 +108,7 @@ func loginWithToken(cc context.Context, token string) error {
 		return err
 	}
 
-	ctx.Terminal(cc).Infof("You are logged in as %q\n", login)
+	ctx.Terminal(cc).Successf("You are logged in as %q\n", login)
 	return nil
 }
 
@@ -152,7 +152,7 @@ nothing is saved.`,
 				if err != nil {
 					return err
 				}
-				term.Infof("API token belongs to %q\n", user.Name)
+				term.Successf("API token belongs to %q\n", user.Name)
 				return nil
 			}
 
@@ -174,7 +174,7 @@ nothing is saved.`,
 				return err
 			}
 
-			term.Infof("You are logged in as %q\n", user.Login())
+			term.Successf("You are logged in as %q\n", user.Login())
 			return nil
 		},
 	}

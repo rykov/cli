@@ -161,7 +161,7 @@ func (f *failures) add(verb, item string, err error) {
 	}
 	f.record(item, err)
 	if f.total > 1 && !f.interrupted() {
-		ctx.Terminal(f.cc).EPrintf("Problem %s %q: %s\n", verb, item, err)
+		ctx.Terminal(f.cc).Failf("Problem %s %q: %s\n", verb, item, err)
 	}
 }
 

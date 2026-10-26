@@ -7,7 +7,6 @@ import (
 
 	"context"
 	"fmt"
-	"text/tabwriter"
 )
 
 // NewCmdPackages creates the "packages" command
@@ -42,16 +41,13 @@ func listPackages(cmd *cobra.Command, args []string) error {
 	}
 
 	packages, err := fetchAll[*api.Package](cc, c.Packages)
-	return printListing(cmd, packages, err, "No packages found in this account", func(term terminal.Terminal) {
+	return printListing(cmd, packages, err, "No packages found in this account", func(term *terminal.UI) {
 		term.Infof("\n*** GEMFURY PACKAGES ***\n\n")
-		w := tabwriter.NewWriter(term.IOOut(), 0, 0, 2, ' ', 0)
-		fmt.Fprintf(w, "name\tkind\tversion\tprivacy\n")
-
+		rows := [][]string{{"name", "kind", "version", "privacy"}}
 		for _, p := range packages {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", p.Name, p.Kind, p.DisplayVersion(), p.Privacy())
+			rows = append(rows, []string{p.Name, p.Kind, p.DisplayVersion(), p.Privacy()})
 		}
-
-		w.Flush()
+		printTable(term.IOOut(), rows)
 	})
 }
 
@@ -68,21 +64,18 @@ func listVersions(cmd *cobra.Command, args []string) error {
 	err = about("Package", args[0], err)
 
 	empty := fmt.Sprintf("No versions found for package %q", args[0])
-	return printListing(cmd, versions, err, empty, func(term terminal.Terminal) {
+	return printListing(cmd, versions, err, empty, func(term *terminal.UI) {
 		term.Infof("\n*** %s versions ***\n\n", args[0])
 		termPrintVersions(term, versions)
 	})
 }
 
-func termPrintVersions(term terminal.Terminal, versions []*api.Version) {
-	w := tabwriter.NewWriter(term.IOOut(), 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "version\tcreated_by\tcreated_at\tkind\tfilename\n")
-
+func termPrintVersions(term *terminal.UI, versions []*api.Version) {
+	rows := [][]string{{"version", "created_by", "created_at", "kind", "filename"}}
 	loc, tty := term.TimeLocation(), term.IsOutTTY()
 	for _, v := range versions {
 		createdAt := timeString(v.CreatedAt, loc, tty)
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", v.Version, v.DisplayCreatedBy(), createdAt, v.DisplayKind(), v.Filename)
+		rows = append(rows, []string{v.Version, v.DisplayCreatedBy(), createdAt, v.DisplayKind(), v.Filename})
 	}
-
-	w.Flush()
+	printTable(term.IOOut(), rows)
 }

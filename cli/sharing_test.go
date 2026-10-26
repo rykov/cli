@@ -79,7 +79,7 @@ func TestSharingAddCommandSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	exp := "Invited \"added@example.com\" as a collaborator\n"
+	exp := "✔ Invited \"added@example.com\" as a collaborator\n"
 	if outStr := string(term.OutBytes()); !strings.HasSuffix(outStr, exp) {
 		t.Errorf("Expected output to include %q, got %q", exp, outStr)
 	}
@@ -111,7 +111,7 @@ func TestSharingAddWithRoleCommandSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	exp := "Invited \"owner@example.com\" as a collaborator\n"
+	exp := "✔ Invited \"owner@example.com\" as a collaborator\n"
 	if outStr := string(term.OutBytes()); !strings.HasSuffix(outStr, exp) {
 		t.Errorf("Expected output to include %q, got %q", exp, outStr)
 	} else if r := roleQuery; r != "owner" {
@@ -153,10 +153,10 @@ func TestSharingAddCommandPartialFailure(t *testing.T) {
 	expectSummaryError(t, runCommand(cc, args), api.ErrNotFound, "1 of 3 invitations failed")
 
 	expectOutputLines(t, term, "Invited ",
-		"Invited \"ok@example.com\" as a collaborator\n",
-		"Invited \"fine@example.com\" as a collaborator\n",
+		"✔ Invited \"ok@example.com\" as a collaborator\n",
+		"✔ Invited \"fine@example.com\" as a collaborator\n",
 	)
-	expectProblems(t, term, "Problem adding \"nobody@example.com\": Doesn't look like this exists\n")
+	expectProblems(t, term, "✗ Problem adding \"nobody@example.com\": Doesn't look like this exists\n")
 }
 
 // ==== sharing remove ====
@@ -178,7 +178,7 @@ func TestSharingRemoveCommandSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	exp := "Removed \"fired@example.com\" as a collaborator\n"
+	exp := "✔ Removed \"fired@example.com\" as a collaborator\n"
 	if outStr := string(term.OutBytes()); !strings.HasSuffix(outStr, exp) {
 		t.Errorf("Expected output to include %q, got %q", exp, outStr)
 	}

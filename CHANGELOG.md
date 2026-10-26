@@ -5,6 +5,16 @@
 - `FURY_API_URL` and `FURY_PUSH_URL` point the CLI at another API and upload
   endpoint, as a URL or a host name, for staging and local servers. The URL
   may have a path, below which the CLI makes its requests.
+- Results, warnings, and failures are marked `✔`, `!`, and `✗`, in colour
+  at a terminal. A question is one line, answered with y or n and Enter,
+  and kept with its answer.
+- Questions and the login's messages go to stderr, as progress does, so
+  stdout can be piped while a person answers. A question is asked only when
+  stdin and stderr are terminals; otherwise, pass `--yes` or set `FURY_TOKEN`.
+- With `ACCESSIBLE` set, questions are plain lines for a screen reader.
+- Uploads and downloads show their progress in the terminal's tab or
+  taskbar, where supported.
+- Table columns stay aligned past wide characters, such as CJK.
 
 ## v1.0.0
 
